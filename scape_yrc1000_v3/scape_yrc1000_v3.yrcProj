@@ -3,10 +3,10 @@
   <ProjectName>scape_yrc1000_v3</ProjectName>
   <FilesInProject>
     <FileForProject>IScpRobot.h</FileForProject>
+    <FileForProject>scapeLib_v3.yrcLib</FileForProject>
     <FileForProject>T.h</FileForProject>
     <FileForProject>T1.c</FileForProject>
     <FileForProject>T2.c</FileForProject>
-    <FileForProject>scapeLib_v3.yrcLib</FileForProject>
   </FilesInProject>
   <LastFileOpened>T2.c</LastFileOpened>
   <UsrInit>False</UsrInit>
@@ -22,7 +22,7 @@
 </CompileCommand>
     <BuildCommand>mpbuilder\gnu\4.3.3-vxworks-6.9\x86-win32\bin\ccpentium.exe -nostdlib -r -WI,-X -WI~FileList~ -o "~OutputPath~"
 </BuildCommand>
-    <IncludeDir>C:\Program Files (x86)\Yaskawa\MotoPlusIDE_YRC\mpbuilder\inc</IncludeDir>
+    <IncludeDir>C:\MotoPlusIDE_YRC\mpbuilder\inc</IncludeDir>
   </Build>
   <ProjectFileVersion>v1.0.1</ProjectFileVersion>
   <ConvertTabs>False</ConvertTabs>

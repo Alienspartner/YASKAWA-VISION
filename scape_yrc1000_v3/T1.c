@@ -1206,6 +1206,26 @@ void t1_main(int arg1, int arg2)
                 // Lear 80 R1-GP25 automatically scan next bin
                 scp->scp_start_scan(&bins[get_next_bin(product_id)]);
                 break;
+            case 70:
+                robot_current_working = ROBOT_IN_BIN_PICKING;
+                set_return_val(scp->scp_pick_3D(&bins[getProductId()]));
+                set_bin_height(bins[product_id].remain_parts_height_mm);
+                break;
+            case 80:
+                scp->scp_place_on_handling_station(&bins[getProductId()]);
+                break;
+            case 90:
+                scp->scp_regrip_at_handling_station(&bins[getProductId()]);
+                break;
+            case 100:
+                scp->scp_check_oc_result(&bins[getProductId()]);
+                break;
+            case 101:
+                scp->scp_scan_3D(&bins[getProductId()]);
+                break;
+            case 102:
+                scp->scp_scan_2D(&bins[getProductId()]);
+                break;
             case 110: // lear 80 GP25 improve cycle time 
                 robot_current_working = ROBOT_IN_BIN_PICKING;
                 get_bin_id(&bin_id,&next_bin);

@@ -7,7 +7,7 @@
 #include "motoPlus.h"
 
 // IMPORTANT NOTE ABOUT TOOL FRAME AND BASE FRAME:
-// This libary always refer a consisten Tool frame and Base frame !!!
+// This libary always refer a consistent Tool frame and Base frame !!!
 // It is up to the user to keep the activated Tool frame and Base is same while execute scape tasks!!!
 
 /*
@@ -38,6 +38,14 @@ _dbg_SCAPE_ = 9 all
 #define JOB_MOVE_BIN_TO_HS 221
 #define JOB_MOVE_HS_TO_BIN 222
 #define JOB_MOV_CLEAR_HS 223
+#define JOB_MOV_CLEAR_BIN1 224
+#define JOB_MOV_CLEAR_BIN2 225
+#define JOB_MOV_BIN_TO_HS1 226
+#define JOB_MOV_BIN_TO_HS2 227
+#define JOB_MOV_HOME_TO_BIN1 228
+#define JOB_MOV_HOME_TO_BIN2 228
+#define JOB_MOV_CLEAR_HS1 229
+#define JOB_MOV_CLEAR_HS2 230
 #define JOB_LIGHT_ON 211
 #define JOB_PATTERN_ON 212
 #define JOB_EMPTY_HS 213
@@ -51,6 +59,11 @@ _dbg_SCAPE_ = 9 all
 #define RC_SOMETHING_IN_BIN -5
 #define RC_SOMETHING_IN_LAYER -6
 #define RC_OC_FAILED -7
+
+#define MOVE_BELT_B 90
+#define PLACE_ON_HS_FAILED_B 91
+#define REGRIP_AT_HS_FAILED_B 92
+#define OC_RECOG_FAILED_B 93
 
 
 
@@ -132,7 +145,7 @@ typedef struct _Robot
     // popup a message from scape
     void (*fnShowMsg)(char[BUFF_LEN],MsgLevel);
 
-    // clean message screan
+    // clean message screen
     void (*fnCleanMsg)(void);
 
     // execution scape task
@@ -165,7 +178,18 @@ typedef struct Scp
 
     // start handling station recognition, valid only stationary camera was used.
     int (*scp_start_handling_station_recog)(Bin* bin);
-    
+
+    int (*scp_place_on_handling_station)(Bin* bin);
+
+    int (*scp_regrip_at_handling_station)(Bin* bin);
+
+    int (*scp_check_oc_result)(Bin* bin);
+
+    int (*scp_pick_3D)(Bin* bin);
+
+    int (*scp_scan_3D)(Bin* bin);
+
+    int (*scp_scan_2D)(Bin* bin);
 }IScp;
 
 int init_robot(Robot* robot,IScp* scp);
