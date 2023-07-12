@@ -1,0 +1,81 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cppbuild",
+			"label": "C/C++: gcc.exe build active file",
+			"command": "C:\\msys64\\mingw64\\bin\\gcc.exe",
+			"args": [
+				"-fdiagnostics-color=always",
+				"-g",
+				"${file}",
+				"-o",
+				"${fileDirname}\\${fileBasenameNoExtension}.exe"
+			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "compiler: C:\\msys64\\mingw64\\bin\\gcc.exe"
+		},
+		{
+			"label": "编译",
+			"type": "shell",
+			"command": "ccpentium.exe",
+			"args": [
+			"-march=atom",
+			"-nostdlib",
+			"-fno-builtin",
+			"-fno-defer-pop",
+			"-fno-implicit-fp",
+			"-fno-zero-initialized-in-bss",
+			"-Wall",
+			"-Werror-implicit-function-declaration",
+			"-g",
+			"-MD",
+			"-MP",
+			"-DCPU=_VX_ATOM",
+			"-DTOOL_FAMILY=gnu",
+			"-DTOOL=gnu",
+			"-D_WRS_KERNEL",
+			"-I",
+			"${workspaceRoot}",
+			"-I", 
+			"C:\\MotoPlusIDE_YRC\\mpbuilder\\inc", 
+			"-c",
+			"${file}",
+			"-o",
+			"${workspaceRoot}\\myout\\${fileBasenameNoExtension}.a"
+			],
+			"group": "build",
+			"presentation": {
+			"reveal": "silent"
+			},
+			"problemMatcher": "$msCompile"
+			},
+			{
+			"label": "生成 out",
+			"type": "shell",
+			"command": "ccpentium.exe",
+			"args": [
+			"-nostdlib",
+			"-r",
+			"-WI",
+			",-X","-WI",
+			"~FileList~",
+			"-o","~OutputPath~"
+			],
+			"group": "build",
+			"presentation": {
+			"reveal": "silent"
+			},
+			"problemMatcher": "$msCompile"
+			}
+	]
+}

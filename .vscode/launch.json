@@ -1,0 +1,56 @@
+{
+    "configurations": [
+        {
+            "name": "C/C++: gcc.exe build and debug active file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:\\msys64\\mingw64\\bin\\gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "C/C++: gcc.exe build active file"
+        },
+        {
+            "name": "yrc1000_c",
+            "type": "cppdbg",
+            "request": "launch",
+            // g++ -g 生成的调试用目标文件名
+            "program": "ccpentium.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            // 输入 gdb 的路径 (有些情况下需要绝对路径)
+            "miDebuggerPath": "gdb.exe",
+            "setupCommands": [
+            {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+            }
+            ],
+            // task.json 中指定的调试目标文件编译命令
+            // 这样可以在调试前免去手动执行 build-debug 的一步
+            "preLaunchTask": "build-debug"
+            }
+    ],
+    "version": "2.0.0"
+}

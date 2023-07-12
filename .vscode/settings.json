@@ -1,0 +1,26 @@
+{
+    "files.associations": {
+    "motoplus.h": "c",
+    "stdio.h": "c",
+    "stdlib.h": "c",
+    "mpstopwatch.h": "c",
+    "mprs232c.h": "c",
+    "mpsensctrl.h": "c",
+    "mpsrvoctrl.h": "c",
+    "mpciodef.h": "c",
+    "mplegapi00.h": "c",
+    "mpexfilectrl.h": "c",
+    "mpsrvofcs.h": "c",
+    "mpkmcevnt.h": "c",
+    "mpmempart.h": "c",
+    "string.h": "c",
+    "stddef.h": "c",
+    "mpparams.h": "c",
+    "winsock2.h": "c",
+    "time.h": "c",
+    "limits.h": "c",
+    "GET_POS.C": "cpp"
+    },
+    "C_Cpp.intelliSenseEngineFallback": "disabled"
+   }
+   

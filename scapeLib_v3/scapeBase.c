@@ -2938,6 +2938,7 @@ static void pick_object(Scp_Product *product, Bin *bin)
         product->parts_bin_picked++;
         product->bin_is_empty = false;
         get_object_height_in_bin(product,&bin->remain_parts_height_mm);
+        set_b_val(0, 99);
         break;
     case 1: // Unknown product
         stopAndShowCodeMsg(2001);
@@ -2946,6 +2947,7 @@ static void pick_object(Scp_Product *product, Bin *bin)
         product->bin_is_empty = true;
         bin->bin_status = RC_BIN_FINISH;
         product->height_is_initialized = false;
+        set_b_val(2, 99);
         break;
     case 3: // Height initialization has not been performed
         stopAndShowCodeMsg(2003);
@@ -2956,6 +2958,7 @@ static void pick_object(Scp_Product *product, Bin *bin)
     case 5: // Layer is empty
         product->layer_done = true;
         bin->bin_status = RC_LAYER_FINISH;
+        set_b_val(5, 99);
     case 9:
         // Loaded product does not contain a bin-picking Session.
         stopAndShowCodeMsg(2009);
@@ -2982,17 +2985,21 @@ static void pick_object(Scp_Product *product, Bin *bin)
         bin->bin_status = RC_UNPICKABLE_PART_IN_BIN;
         product->bin_is_empty = true;
         product->height_is_initialized = false;
+        set_b_val(30, 99);
         break;
     case 31:  // No more PICKABLE parts in LAYER, but at least one recognized part
         bin->bin_status = RC_UNPICKABLE_PART_IN_LAYER;
+        set_b_val(31, 99);
         break;
     case 32:  // No recognized parts in BIN, but SOMETHING was left in bin
         bin->bin_status = RC_SOMETHING_IN_BIN;
         product->bin_is_empty = true;
         product->height_is_initialized = false;
+        set_b_val(32, 99);
         break;
     case 33:  // No recognized parts in LAYER, but SOMETHING was left in Layer
         bin->bin_status = RC_SOMETHING_IN_LAYER;
+        set_b_val(33, 99);
         break;    
     default:
         // Unsupported return code
