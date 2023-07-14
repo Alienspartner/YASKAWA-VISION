@@ -133,44 +133,6 @@ static int int_pow(int n)
     return temp;
 }
 
-static char get_b_val(unsigned short idx)
-{
-    MP_USR_VAR_INFO varInfo1, varInfo2;
-    unsigned short rc1 = 0, rc2 = 0;
-    
-    memset(&varInfo1, 0, sizeof(varInfo1));
-    varInfo1.var_type = MP_VAR_B;
-    varInfo1.var_no = idx;
-
-    memset(&varInfo2, 0, sizeof(varInfo2));
-    varInfo2.var_type = MP_VAR_B;
-    varInfo2.var_no = idx;
-
-    rc1 = mpGetUserVars(&varInfo1);
-
-    return varInfo1.val.b;
-}
-
-void waitTime(float sec)
-{
-    mpTaskDelay((int)(1000 * sec/mpGetRtc()));
-}
-
-void set_b_val(unsigned short var,unsigned char idx)
-{
-    MP_USR_VAR_INFO varInfo;
-    
-    memset(&varInfo, 0, sizeof(varInfo));
-    varInfo.var_type = MP_VAR_B;
-    varInfo.var_no = idx;
-    varInfo.val.b = var;
-    while(true)
-    {
-        if(mpPutUserVars(&varInfo) == 0) break;
-        waitTime(0.01);
-    }
-}
-
 static char *itos(int i, char *const sVar)
 {
     short bits = 1;
@@ -2276,66 +2238,6 @@ static void m_hs_to_bin(int group_id, int product_id)
     run_job(JOB_MOVE_HS_TO_BIN, group_id, product_id, 0);
 }
 
-static void move_clear_bin(int group_id, int product_id){
-    switch (product_id)
-    {
-    case 1:
-        /* code */
-        run_job(JOB_MOV_CLEAR_BIN1, group_id, product_id, 0);
-        break;
-    case 2:
-        run_job(JOB_MOV_CLEAR_BIN2, group_id, product_id, 0);
-        break;
-    default:
-        break;
-    }
-}
-
-static void move_home_to_bin(int group_id, int product_id){
-    switch (product_id)
-    {
-    case 1:
-        /* code */
-        run_job(JOB_MOV_HOME_TO_BIN1, group_id, product_id, 0);
-        break;
-    case 2:
-        run_job(JOB_MOV_HOME_TO_BIN2, group_id, product_id, 0);
-        break;
-    default:
-        break;
-    }
-}
-
-static void move_bin_to_hs(int group_id, int product_id){
-    switch (product_id)
-    {
-    case 1:
-        /* code */
-        run_job(JOB_MOV_BIN_TO_HS1, group_id, product_id, 0);
-        break;
-    case 2:
-        run_job(JOB_MOV_BIN_TO_HS2, group_id, product_id, 0);
-        break;
-    default:
-        break;
-    }
-}
-
-static void move_clear_hs(int group_id, int product_id){
-    switch (product_id)
-    {
-    case 1:
-        /* code */
-        run_job(JOB_MOV_CLEAR_HS1, group_id, product_id, 0);
-        break;
-    case 2:
-        run_job(JOB_MOV_CLEAR_HS2, group_id, product_id, 0);
-        break;
-    default:
-        break;
-    }
-}
-
 static void request_robot_pose(RobotPose pose)
 {
     switch (currentRobotPose)
@@ -2938,7 +2840,6 @@ static void pick_object(Scp_Product *product, Bin *bin)
         product->parts_bin_picked++;
         product->bin_is_empty = false;
         get_object_height_in_bin(product,&bin->remain_parts_height_mm);
-        set_b_val(0, 99);
         break;
     case 1: // Unknown product
         stopAndShowCodeMsg(2001);
@@ -2947,7 +2848,6 @@ static void pick_object(Scp_Product *product, Bin *bin)
         product->bin_is_empty = true;
         bin->bin_status = RC_BIN_FINISH;
         product->height_is_initialized = false;
-        set_b_val(2, 99);
         break;
     case 3: // Height initialization has not been performed
         stopAndShowCodeMsg(2003);
@@ -2958,7 +2858,6 @@ static void pick_object(Scp_Product *product, Bin *bin)
     case 5: // Layer is empty
         product->layer_done = true;
         bin->bin_status = RC_LAYER_FINISH;
-        set_b_val(5, 99);
     case 9:
         // Loaded product does not contain a bin-picking Session.
         stopAndShowCodeMsg(2009);
@@ -2985,21 +2884,17 @@ static void pick_object(Scp_Product *product, Bin *bin)
         bin->bin_status = RC_UNPICKABLE_PART_IN_BIN;
         product->bin_is_empty = true;
         product->height_is_initialized = false;
-        set_b_val(30, 99);
         break;
     case 31:  // No more PICKABLE parts in LAYER, but at least one recognized part
         bin->bin_status = RC_UNPICKABLE_PART_IN_LAYER;
-        set_b_val(31, 99);
         break;
     case 32:  // No recognized parts in BIN, but SOMETHING was left in bin
         bin->bin_status = RC_SOMETHING_IN_BIN;
         product->bin_is_empty = true;
         product->height_is_initialized = false;
-        set_b_val(32, 99);
         break;
     case 33:  // No recognized parts in LAYER, but SOMETHING was left in Layer
         bin->bin_status = RC_SOMETHING_IN_LAYER;
-        set_b_val(33, 99);
         break;    
     default:
         // Unsupported return code
@@ -3607,7 +3502,6 @@ static int scape_pick(Bin *bin, short rescan, PickCfg pickCfg)
 }
 
 static int scape_pick_3D(Bin* bin){
-    request_robot_pose(atBinEntry);
     if (bin->bin_status < 0){
         update_bin(&product_data[bin->product_id-1], bin);}
     height_init_if_needed(&product_data[bin->product_id-1], bin->start_height_mm);
@@ -3615,63 +3509,62 @@ static int scape_pick_3D(Bin* bin){
     {
         acquire_bin_data(&product_data[bin->product_id-1], true);
     }
-
     pick_object(&product_data[bin->product_id-1], bin);
-    if (product_data[bin->product_id-1].bin_is_empty == true){
+    /*if (product_data[bin->product_id-1].bin_is_empty == true){
         set_b_val(1, MOVE_BELT_B);
     }
     else{
         set_b_val(0, MOVE_BELT_B);
     }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
+    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);*/
     return bin->bin_status;
 }
 
 static int scape_place_on_hs(Bin* bin){
     place_part_on_hs(&product_data[bin->product_id-1], false);
-    if (product_data[bin->product_id-1].part_placed_on_hs == false){
+    /*if (product_data[bin->product_id-1].part_placed_on_hs == false){
         set_b_val(1, PLACE_ON_HS_FAILED_B);
     }
     else{
         set_b_val(0, PLACE_ON_HS_FAILED_B);
     }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
+    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);*/
     return bin->bin_status;
 }
 
 static int scape_regrip_at_hs(Bin* bin){
     perform_regrip_at_hs(&product_data[bin->product_id-1]);
-    if (product_data[bin->product_id-1].oc_part_was_picked == false){
+    /*if (product_data[bin->product_id-1].oc_part_was_picked == false){
         set_b_val(1, REGRIP_AT_HS_FAILED_B);
     }
     else{
         set_b_val(0, REGRIP_AT_HS_FAILED_B);
     }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
+    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);*/
     return bin->bin_status;
 }
 
 static int scape_check_oc_result(Bin* bin){
     check_oc_recognition_result(&product_data[bin->product_id-1]);
-    if (product_data[bin->product_id-1].oc_recog_success == false){
+    /*if (product_data[bin->product_id-1].oc_recog_success == false){
         set_b_val(1, OC_RECOG_FAILED_B);
     }
     else{
         set_b_val(0, OC_RECOG_FAILED_B);
     }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
+    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);*/
     return bin->bin_status;
 }
 
 static int scape_scan_3D(Bin* bin){
     acquire_bin_data(&product_data[bin->product_id - 1], true);
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
+    /*run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);*/
     return bin->bin_status;
 }
 
 static int scape_scan_2D(Bin* bin){
     start_oc_recognition(&product_data[bin->product_id - 1], false);
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
+    /*run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);*/
     return bin->bin_status;
 }
 
