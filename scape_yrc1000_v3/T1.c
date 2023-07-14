@@ -47,7 +47,7 @@ scapeBase.c 更新，stopshowmsg 函数，如果输出的errorcode 余100 等于
 #define ROBOT_IN_BIN_PICKING 1
 
 
-typedef enum {CALIBRATION_10 = 10,BP_INITIALIZE_20 = 20, SCAPE_PICK_30 = 30, START_BIN_SCAN_40 = 40,START_HS_RECOG_50 = 50}Choice;
+typedef enum {CALIBRATION_10 = 10,BP_INITIALIZE_20 = 20, SCAPE_PICK_30 = 30, START_BIN_SCAN_40 = 40,START_HS_RECOG_50 = 50,TUOPU = 60}Choice;
 typedef struct _YRC_TASK
 {
     // general
@@ -1197,7 +1197,45 @@ void t1_main(int arg1, int arg2)
             case START_HS_RECOG_50:
                 scp->scp_start_handling_station_recog(&bins[getProductId()]);
                 break;
-            case 60: // pick current and auto start scan next bin Lear project specific code:
+            case TUOPU:
+                reset_all_bins;
+                scp->scp_initialize(getGroupId(),getNumOfProducts());
+                scp->add(&bins[0]);
+                scp->add(&bins[1]);
+                cycle:
+                if(get_io(146) && get_b_val(31)==2){
+                    scp->place(&bins[0]);
+                }
+                if(get_io(147) && get_b_val(41)==2){
+                    scp->place(&bins[1]);
+                }
+                if(get_io(146) && get_b_val(31)==0){
+                    scp->add(&bins[0]);
+                    scp->place(&bins[0]);
+                }
+                if(get_io(147) && get_b_val(41)==0){
+                    scp->add(&bins[1]);
+                    scp->place(&bins[1]);
+                }
+                if(!get_io(146) && !get_io(147) && get_b_val(31)==0 && get_b_val(41)==0){
+                    if(get_io(130) || get_io(129)){
+                        scp->add(&bins[0]);
+                        if(get_io(146)){
+                            goto cycle;
+                        }
+                    }
+                    if(get_io(131)){
+                        scp->add(&bins[1]);
+                    }
+                }
+                if(!get_io(146) && !get_io(147) && get_b_val(31)==0){
+                    scp->add(&bins[0]);
+                }
+                if(!get_io(146) && !get_io(147) && get_b_val(41)==0){
+                    scp->add(&bins[1]);
+                }
+                goto cycle;
+            /*case 60: // pick current and auto start scan next bin Lear project specific code:
                 robot_current_working = ROBOT_IN_BIN_PICKING;
                 product_id = getProductId();
                 set_return_val(scp->scp_pick(&bins[product_id],isRescanNeed(),getPickCfg()));
@@ -1250,7 +1288,7 @@ void t1_main(int arg1, int arg2)
                     put_b_val(255, 15);
                 }
                 
-                break;
+                break;*/
             case 111:
                 get_io_test();
             default:

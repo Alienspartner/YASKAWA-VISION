@@ -35,22 +35,23 @@ _dbg_SCAPE_ = 9 all
 #define JOB_TEACH 101
 #define JOB_GET_TCP_POSE 111
 #define JOB_GET_JOINTS 112
-#define JOB_MOVE_BIN_TO_HS 221
-#define JOB_MOVE_HS_TO_BIN 222
-#define JOB_MOV_CLEAR_HS 223
-#define JOB_MOV_CLEAR_BIN1 224
-#define JOB_MOV_CLEAR_BIN2 225
-#define JOB_MOV_BIN_TO_HS1 226
-#define JOB_MOV_BIN_TO_HS2 227
-#define JOB_MOV_HOME_TO_BIN1 228
-#define JOB_MOV_HOME_TO_BIN2 228
-#define JOB_MOV_CLEAR_HS1 229
-#define JOB_MOV_CLEAR_HS2 230
+#define JOB_MOVE_BIN_TO_HS 222
+#define JOB_MOVE_HS_TO_BIN 221
+#define JOB_MOV_CLEAR_HS 222
+#define JOB_MOV_CLEAR_BIN 221
+#define JOB_PLACE_PART 226
+#define JOB_EMPTY_HS 227
+#define JOB_MOVE_BELT 228
+#define JOB_LOCK_BELT 229
+#define JOB_UNLOCK_BELT 230
+#define JOB_PUT_ERROR 231
 #define JOB_LIGHT_ON 211
 #define JOB_PATTERN_ON 212
-#define JOB_EMPTY_HS 213
 #define JOB_CHECK_GRIP 210
 #define JOB_EXIT 255
+
+#define JOB_MOVE
+
 // 'RC_' scape pick return value
 #define RC_BIN_FINISH -1
 #define RC_LAYER_FINISH -2
@@ -59,11 +60,6 @@ _dbg_SCAPE_ = 9 all
 #define RC_SOMETHING_IN_BIN -5
 #define RC_SOMETHING_IN_LAYER -6
 #define RC_OC_FAILED -7
-
-#define MOVE_BELT_B 90
-#define PLACE_ON_HS_FAILED_B 91
-#define REGRIP_AT_HS_FAILED_B 92
-#define OC_RECOG_FAILED_B 93
 
 
 
@@ -179,17 +175,25 @@ typedef struct Scp
     // start handling station recognition, valid only stationary camera was used.
     int (*scp_start_handling_station_recog)(Bin* bin);
 
-    int (*scp_place_on_handling_station)(Bin* bin);
+    void (*scp_place_on_handling_station)(Bin* bin);
 
-    int (*scp_regrip_at_handling_station)(Bin* bin);
+    void (*scp_regrip_at_handling_station)(Bin* bin);
 
-    int (*scp_check_oc_result)(Bin* bin);
+    void (*scp_check_oc_result)(Bin* bin);
 
-    int (*scp_pick_3D)(Bin* bin);
+    void (*scp_pick_3D)(Bin* bin);
 
-    int (*scp_scan_3D)(Bin* bin);
+    void (*scp_scan_3D)(Bin* bin);
 
-    int (*scp_scan_2D)(Bin* bin);
+    void (*scp_scan_2D)(Bin* bin);
+    
+    void (*pick)(Bin *bin);
+
+    void (*add)(Bin *bin);
+
+    void (*place)(Bin *bin);
+
+    void (*puterr)();
 }IScp;
 
 int init_robot(Robot* robot,IScp* scp);
