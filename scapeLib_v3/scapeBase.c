@@ -2233,9 +2233,9 @@ static void update_io(void)
     char cmd[BUFF_LEN] = "SET GripSensor1_VALUE %d GripSensor2_VALUE %d GripSensor3_VALUE %d;";
 
     getVal("GET RingLight_LIGHT_RING_ON PatternProjector_LIGHT_PATTERN_PROJECTOR_ON;");
-    run_job(JOB_LIGHT_ON, tempData[0], 0, 0);
-    run_job(JOB_PATTERN_ON, tempData[1], 0, 0);
-    run_job(JOB_CHECK_GRIP, get_b_val(66), get_b_val(67), get_b_val(68));
+    /*run_job(JOB_LIGHT_ON, tempData[0], 0, 0);
+    run_job(JOB_PATTERN_ON, tempData[1], 0, 0);*/
+    run_job(JOB_CHECK_GRIP, 0, 0, 0);
     setVal(getStr(cmd, 3, tasks[0].user_task.par0, tasks[0].user_task.par1, tasks[0].user_task.par2));
 
     setVal("SET ROBOT_SIGNAL_READY 0;");
@@ -2263,17 +2263,17 @@ static int current_group_id = 1;
 
 static void m_clear_of_hs(int group_id, int product_id)
 {
-    run_job(JOB_MOV_CLEAR_HS, group_id, product_id, 0);
+    //run_job(JOB_MOVE_CLEAR_HS, group_id, product_id, 0);
 }
 
 static void m_bin_to_hs(int group_id, int product_id)
 {
-    run_job(JOB_MOVE_BIN_TO_HS, group_id, product_id, 0);
+    //run_job(JOB_MOVE_BIN_TO_HS, group_id, product_id, 0);
 }
 
 static void m_hs_to_bin(int group_id, int product_id)
 {
-    run_job(JOB_MOVE_HS_TO_BIN, group_id, product_id, 0);
+    //run_job(JOB_MOVE_HS_TO_BIN, group_id, product_id, 0);
 }
 
 static void request_robot_pose(RobotPose pose)
@@ -3586,6 +3586,7 @@ static void put_b_val(unsigned short var,unsigned char idx)
 }
 
 static void scape_pick_3D(Bin* bin){
+    request_robot_pose(atBinEntry);
     if (bin->bin_status < 0){
         update_bin(&product_data[bin->product_id-1], bin);}
     height_init_if_needed(&product_data[bin->product_id-1], bin->start_height_mm);
@@ -3656,7 +3657,7 @@ static void scape_scan_2D(Bin* bin){
 
 static void pick(Bin* bin){
     start:
-    run_job(JOB_MOV_CLEAR_BIN, bin->product_group_id, bin->product_id, 0);
+    run_job(JOB_MOVE_CLEAR_BIN, bin->product_group_id, bin->product_id, 0);
     scape_pick_3D(bin);
     if(product_data[bin->product_id-1].bin_is_empty == true){
         run_job(JOB_MOVE_BELT, bin->product_group_id, bin->product_id, 0);
@@ -3680,7 +3681,7 @@ static void place(Bin *bin){
     int ng = 0;
     first:
     scape_check_oc_result(bin);
-    run_job(JOB_MOV_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
+    run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
     scape_regrip_at_hs(bin);
     if(product_data[bin->product_id-1].oc_part_was_picked == false){
         run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
@@ -3691,14 +3692,14 @@ static void place(Bin *bin){
     scape_scan_2D(bin);
     second:
     scape_check_oc_result(bin);
-    run_job(JOB_MOVE_BIN_TO_HS, bin->product_group_id, bin->product_id, 0);
+    run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
     scape_regrip_at_hs(bin);
     if(product_data[bin->product_id-1].oc_part_was_picked == false){
         ng = 1;
         run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
         pick(bin);
         scape_place_on_hs(bin);
-        run_job(JOB_MOV_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
+        run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
         scape_scan_2D(bin);
         goto second;
     }

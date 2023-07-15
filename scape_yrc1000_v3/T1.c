@@ -135,6 +135,8 @@ static short get_io(unsigned int address)
     USHORT* rData;
     LONG num = 1;
 
+    sData->ulAddr = address;
+
     mpReadIO(sData,rData,num);
     return *rData;
 }
@@ -1198,11 +1200,12 @@ void t1_main(int arg1, int arg2)
                 scp->scp_start_handling_station_recog(&bins[getProductId()]);
                 break;
             case TUOPU:
-                reset_all_bins;
-                scp->scp_initialize(getGroupId(),getNumOfProducts());
                 scp->add(&bins[0]);
                 scp->add(&bins[1]);
                 cycle:
+                if(get_io(125)){
+                    scp->puterr(&bins[0]);
+                }
                 if(get_io(146) && get_b_val(31)==2){
                     scp->place(&bins[0]);
                 }
