@@ -131,14 +131,14 @@ static void set_io(unsigned int address,short value)
 
 static short get_io(unsigned int address)
 {
-    MP_IO_INFO* sData;
-    USHORT* rData;
+    MP_IO_INFO sData;
+    USHORT rData;
     LONG num = 1;
 
-    sData->ulAddr = address;
+    sData.ulAddr = address;
 
-    mpReadIO(sData,rData,num);
-    return *rData;
+    mpReadIO(&sData,&rData,num);
+    return rData;
 }
 
 static void put_s_val(char* var,unsigned short idx)
@@ -1150,6 +1150,51 @@ void get_bin_id(int* current, int* next)
     *next = next_bin;
 }
 
+// 次数添加获取抓取产品号的方法
+int get_tp_bin_to_pick(){
+    // 通过get_io(IO 地址号码); 来读取IO状态，
+    // 根据IO状态来返回产品号，比如 DI1 和DI2 为产品1的两个上料信号，读取到任何一个则返回1
+    // DI2，DI3 为产品2 的两个上料信号，读取到任何一个返回2
+    // 否则返回255，表示没有任何可以抓取的产品？？？？
+    // 可以考虑 如果没有任何上料信号 则返回产品1（表示提前准备一个零件，拍照 + 识别 提前准备）这样下次上料信号亮起的时候可以直接抓取
+    // 提前备料需要考虑，所备的产品是否能马上被inform程序拿走，否则 需要人工干预重启程序！！
+    if(get_io(20221)){
+        return 1;
+    }
+    if(get_io(20222)){
+        return 2;
+    }
+    return 255;
+}
+
+// 在此处添加移动传送带的方法
+void move_convyer(int product){
+    // 通过get_io(); 获取IO信号
+    // set_io(); 设置IO信号
+    if(product == 1){
+        set_io(30261, 0);
+        set_io(30263, 1);
+        waitSec(2.0);
+        set_io(30263, 0);
+        while(1){
+            if(get_io(20225)) break;
+            waitSec(0.01);
+        }
+        set_io(30261, 1);
+    }
+    if(product == 2){
+        set_io(30262, 0);
+        set_io(30264, 1);
+        waitSec(2.0);
+        set_io(30264, 0);
+        while(1){
+            if(get_io(20226)) break;
+            waitSec(0.01);
+        }
+        set_io(30262, 1);
+    }
+}
+
 void t1_main(int arg1, int arg2)
 {    
     int product_id = 0;
@@ -1203,53 +1248,78 @@ void t1_main(int arg1, int arg2)
                 scp->add(&bins[0]);
                 scp->add(&bins[1]);
                 cycle:
-                if(get_io(125)){
+                if(get_io(20194)){
                     scp->puterr(&bins[0]);
                 }
-                if(get_io(146) && get_b_val(31)==2){
+                if(get_io(20221) && get_b_val(31)==2){
                     scp->place(&bins[0]);
                 }
-                if(get_io(147) && get_b_val(41)==2){
+                if(get_io(20222) && get_b_val(41)==2){
                     scp->place(&bins[1]);
                 }
-                if(get_io(146) && get_b_val(31)==0){
+                if(get_io(20221) && get_b_val(31)==0){
                     scp->add(&bins[0]);
                     scp->place(&bins[0]);
                 }
-                if(get_io(147) && get_b_val(41)==0){
+                if(get_io(20222) && get_b_val(41)==0){
                     scp->add(&bins[1]);
                     scp->place(&bins[1]);
                 }
-                if(!get_io(146) && !get_io(147) && get_b_val(31)==0 && get_b_val(41)==0){
-                    if(get_io(130) || get_io(129)){
+                if(!get_io(20221) && !get_io(20222) && get_b_val(31)==0 && get_b_val(41)==0){
+                    if(get_io(20201) || get_io(20200)){
                         scp->add(&bins[0]);
-                        if(get_io(146)){
+                        if(get_io(20221)){
                             goto cycle;
                         }
                     }
-                    if(get_io(131)){
+                    if(get_io(20202)){
                         scp->add(&bins[1]);
                     }
                 }
-                if(!get_io(146) && !get_io(147) && get_b_val(31)==0){
+                if(!get_io(20221) && !get_io(20222) && get_b_val(31)==0){
                     scp->add(&bins[0]);
                 }
-                if(!get_io(146) && !get_io(147) && get_b_val(41)==0){
+                if(!get_io(20221) && !get_io(20222) && get_b_val(41)==0){
                     scp->add(&bins[1]);
                 }
                 goto cycle;
-            /*case 60: // pick current and auto start scan next bin Lear project specific code:
-                robot_current_working = ROBOT_IN_BIN_PICKING;
-                product_id = getProductId();
-                set_return_val(scp->scp_pick(&bins[product_id],isRescanNeed(),getPickCfg()));
-                set_bin_height(bins[product_id].remain_parts_height_mm);
-
-                // Lear 80 R1-GP25 automatically scan next bin
-                scp->scp_start_scan(&bins[get_next_bin(product_id)]);
+                break;
+            case 120: // for Tuo Pu project
+                while(get_b_val(61) != 1){
+                    // 获取需要抓取的箱子号
+                    product_id = get_tp_bin_to_pick();
+                    if (product_id == 1 || product_id == 2){ // 当前有抓料需求
+                        // 根据需要触发3D相机扫描 触发扫描前考虑机器人遮挡 增加延迟，现添加3秒。
+                        // 获取B016 变量，代表机器人 inform程序正在处理的产品号
+                        // 若inform程序和motoplus程序正在处理相同的产品，为了避免机器人遮挡需要添加延迟
+                        // 告知 inform 程序 当前motoplus 正在处理的产品号
+                        put_b_val(product_id, 15);
+                        if (get_b_val(16) == product_id){ 
+                            waitSec(3);
+                        }
+                        scp->scp_start_scan(&bins[product_id-1]);
+                        /// 开始抓取，选用默认配置 即首先考虑从箱子抓取一个产品放置到 中转台，
+                        /// 中转台需设置两个分区
+                        /// 在中转台上放置完一个零件后会自动补第二个零件，
+                        /// 补第二个零件后，二次抓取第一个零件 然后流程结束
+                        int result =  scp->scp_pick(&bins[product_id-1],0,0);
+                        /// 结果小于0 即箱子无可继续抓取产品，需要移动传送带
+                        if (result < 0){
+                            // 在此处发送信号，操控传送带，并等待传送带操作完成。
+                            /// 根据传入的参数 product_id 来选择移动哪一条传送带
+                            move_convyer(product_id);
+                        }
+                    }
+                    else{ // 无抓料需求，告知inform 程序 B105 为255，代表motoplus程序没有找到可以抓取的产品
+                        put_b_val(255, 15);
+                    }
+                    t1_log("120 loop...");
+                    hold_T1_if_needed();
+                }
                 break;
             case 70:
                 robot_current_working = ROBOT_IN_BIN_PICKING;
-                set_return_val(scp->scp_pick_3D(&bins[getProductId()]));
+                scp->scp_pick_3D(&bins[getProductId()]);
                 set_bin_height(bins[product_id].remain_parts_height_mm);
                 break;
             case 80:
@@ -1267,31 +1337,6 @@ void t1_main(int arg1, int arg2)
             case 102:
                 scp->scp_scan_2D(&bins[getProductId()]);
                 break;
-            case 110: // lear 80 GP25 improve cycle time 
-                robot_current_working = ROBOT_IN_BIN_PICKING;
-                get_bin_id(&bin_id,&next_bin);
-                if ((bin_id >=0) && (bin_id <= 3))
-                {
-                    // set B015 bin_id 
-                    put_b_val(bin_id + 1, 15);
-    
-                    // wait B016 = B015
-                    //wait_b_val(16,bin_id+1);
-                    set_return_val(scp->scp_pick(&bins[bin_id],0,1));
-                    set_bin_height(bins[bin_id].remain_parts_height_mm);
-                    
-                    // wait TP reset B015 = 0
-                    wait_b_val(15,0);
-                    if ((next_bin >=0) && (next_bin <= 3) && (next_bin != bin_id))
-                    scp->scp_start_scan(&bins[next_bin]);
-                }
-                else
-                {
-                    // Set B015 255
-                    put_b_val(255, 15);
-                }
-                
-                break;*/
             case 111:
                 get_io_test();
             default:

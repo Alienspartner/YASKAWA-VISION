@@ -2263,17 +2263,17 @@ static int current_group_id = 1;
 
 static void m_clear_of_hs(int group_id, int product_id)
 {
-    //run_job(JOB_MOVE_CLEAR_HS, group_id, product_id, 0);
+    run_job(JOB_MOV_CLEAR_HS, group_id, product_id, 0);
 }
 
 static void m_bin_to_hs(int group_id, int product_id)
 {
-    //run_job(JOB_MOVE_BIN_TO_HS, group_id, product_id, 0);
+    run_job(JOB_MOVE_BIN_TO_HS, group_id, product_id, 0);
 }
 
 static void m_hs_to_bin(int group_id, int product_id)
 {
-    //run_job(JOB_MOVE_HS_TO_BIN, group_id, product_id, 0);
+    run_job(JOB_MOVE_HS_TO_BIN, group_id, product_id, 0);
 }
 
 static void request_robot_pose(RobotPose pose)
@@ -3596,69 +3596,72 @@ static void scape_pick_3D(Bin* bin){
         acquire_bin_data(&product_data[bin->product_id - 1], true);
     }
     pick_object(&product_data[bin->product_id-1], bin);
-    /*if (product_data[bin->product_id-1].bin_is_empty == true){
-        set_b_val(1, MOVE_BELT_B);
+    if (product_data[bin->product_id-1].bin_is_empty == true){
+        set_b_val(1, 90);
     }
     else{
-        set_b_val(0, MOVE_BELT_B);
+        set_b_val(0, 90);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-    return bin->bin_status;*/
 }
 
 static void scape_place_on_hs(Bin* bin){
     place_part_on_hs(&product_data[bin->product_id-1], false);
-    /*if (product_data[bin->product_id-1].part_placed_on_hs == false){
-        set_b_val(1, PLACE_ON_HS_FAILED_B);
+    if (product_data[bin->product_id-1].part_placed_on_hs == false){
+        set_b_val(1, 91);
     }
     else{
-        set_b_val(0, PLACE_ON_HS_FAILED_B);
+        set_b_val(0, 91);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-    return bin->bin_status;*/
 }
 
 static void scape_regrip_at_hs(Bin* bin){
     perform_regrip_at_hs(&product_data[bin->product_id-1]);
-    /*if (product_data[bin->product_id-1].oc_part_was_picked == false){
-        set_b_val(1, REGRIP_AT_HS_FAILED_B);
+    if (product_data[bin->product_id-1].oc_part_was_picked == false){
+        set_b_val(1, 92);
     }
     else{
-        set_b_val(0, REGRIP_AT_HS_FAILED_B);
+        set_b_val(0, 92);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-    return bin->bin_status;*/
 }
 
 static void scape_check_oc_result(Bin* bin){
     check_oc_recognition_result(&product_data[bin->product_id-1]);
-    /*if (product_data[bin->product_id-1].oc_recog_success == false){
-        set_b_val(1, OC_RECOG_FAILED_B);
+    if (product_data[bin->product_id-1].oc_recog_success == false){
+        set_b_val(1, 93);
     }
     else{
-        set_b_val(0, OC_RECOG_FAILED_B);
+        set_b_val(0, 93);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-    return bin->bin_status;*/
 }
 
 static void scape_scan_3D(Bin* bin){
     run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
     acquire_bin_data(&product_data[bin->product_id - 1], true);
-    /*run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-    return bin->bin_status;*/
+    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
 }
 
 static void scape_scan_2D(Bin* bin){
     start_oc_recognition(&product_data[bin->product_id - 1], false);
-    /*run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-    return bin->bin_status;*/
+    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
 }
 
 static void pick(Bin* bin){
     start:
     run_job(JOB_MOVE_CLEAR_BIN, bin->product_group_id, bin->product_id, 0);
-    scape_pick_3D(bin);
+    request_robot_pose(atBinEntry);
+    if (bin->bin_status < 0){
+        update_bin(&product_data[bin->product_id-1], bin);}
+    height_init_if_needed(&product_data[bin->product_id-1], bin->start_height_mm);
+    if (product_data[bin->product_id-1].bp_acq_needed == true)
+    {
+        run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
+        acquire_bin_data(&product_data[bin->product_id - 1], true);
+    }
+    pick_object(&product_data[bin->product_id-1], bin);
     if(product_data[bin->product_id-1].bin_is_empty == true){
         run_job(JOB_MOVE_BELT, bin->product_group_id, bin->product_id, 0);
         goto start;
@@ -3668,51 +3671,52 @@ static void pick(Bin* bin){
 
 static void add(Bin *bin){
     pick(bin);
-    scape_place_on_hs(bin);
+    place_part_on_hs(&product_data[bin->product_id-1], false);
     pick(bin);
-    scape_place_on_hs(bin);
+    place_part_on_hs(&product_data[bin->product_id-1], false);
     run_job(JOB_HOMING, bin->product_group_id, bin->product_id, 0);
-    scape_scan_2D(bin);
-    scape_scan_3D(bin);
+    start_oc_recognition(&product_data[bin->product_id - 1], false);
+    run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
+    acquire_bin_data(&product_data[bin->product_id - 1], true);
     put_b_val(2, 10*(bin->product_id)+21);
 }
 
 static void place(Bin *bin){
     int ng = 0;
     first:
-    scape_check_oc_result(bin);
+    check_oc_recognition_result(&product_data[bin->product_id-1]);
     run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
-    scape_regrip_at_hs(bin);
+    perform_regrip_at_hs(&product_data[bin->product_id-1]);
     if(product_data[bin->product_id-1].oc_part_was_picked == false){
         run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
         add(bin);
         goto first;
     }
     run_job(JOB_PLACE_PART, bin->product_group_id, bin->product_id, 0);
-    scape_scan_2D(bin);
+    start_oc_recognition(&product_data[bin->product_id - 1], false);
     second:
-    scape_check_oc_result(bin);
+    check_oc_recognition_result(&product_data[bin->product_id-1]);
     run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
-    scape_regrip_at_hs(bin);
+    perform_regrip_at_hs(&product_data[bin->product_id-1]);
     if(product_data[bin->product_id-1].oc_part_was_picked == false){
         ng = 1;
         run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
         pick(bin);
-        scape_place_on_hs(bin);
+        place_part_on_hs(&product_data[bin->product_id-1], false);
         run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
-        scape_scan_2D(bin);
+        start_oc_recognition(&product_data[bin->product_id - 1], false);
         goto second;
     }
     run_job(JOB_PLACE_PART, bin->product_group_id, bin->product_id, 0);
     run_job(JOB_HOMING, bin->product_group_id, bin->product_id, 0);
     if(ng == 1){
-        scape_scan_3D(bin);
+        acquire_bin_data(&product_data[bin->product_id - 1], true);
     }
     put_b_val(0, 10*(bin->product_id)+21);
 }
 
-static void puterr(Bin *bin){
-    run_job(JOB_PUT_ERROR, bin->product_group_id, bin->product_id, 0);
+static void puterr(){
+    run_job(JOB_PUT_ERROR, 0, 0, 0);
 }
 
 int init_robot(Robot *robot, IScp *scp)
