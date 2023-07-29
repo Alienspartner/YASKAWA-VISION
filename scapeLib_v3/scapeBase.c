@@ -1,30 +1,4 @@
-﻿//*******************************************
-// NAME:     scape_base.c v3
-// DATA:        2022-07-04
-//  
-/*  UPDATEING NOTES:
-2022-05-31
-    update bin left parts height - I66
-2022-07-04
-  update 1:
-    to improve the cycle time, add option 60 Lear specifice option
-    automatically scan the next bin at the moment the current bin-picking returns
-    to aviod the robot block the scanner view, the choosen next bin normally need to keep away from current
-  update 2:
-    now JOB_EXIT with three pamameters have meaning, it will show scape methods return value, e.g. 
-    inside SCAPE_PICK  par0 stands for SCAPE_PICK return value, par1 stands for parts left height in the current bin
-    the benifit of this, can transfer return value faster to TP program, TP program no need to update the return value
-    while TP exit the scape control loop. 
- 2022-11-18
-   update 1:
-     由于客户反馈零件清框率特别差，所以这里添加料箱为空的二次判定，首次返回料箱无法继续抓取之后，会做高度初始化，接着继续抓取，
-     在第二次报告箱子无法继续抓取之后返回箱子无法抓取的相关信号。
- 2023-02-09
-     相机在断开链接时候输出DO
-*/
-//*******************************************
-
-
+﻿
 #include "IScpRobot.h"
 #include "stdarg.h"
 #include "stdlib.h"
@@ -34,7 +8,6 @@
 #define TEMP_DATA_LEN 50
 #define true 1
 #define false 0
-
 
 typedef struct scpTask
 {
@@ -136,7 +109,7 @@ static int int_pow(int n)
 static char get_b_val(unsigned short idx)
 {
     MP_USR_VAR_INFO varInfo1, varInfo2;
-    unsigned short rc1 = 0, rc2 = 0;
+    unsigned short rc1 = 0;
     
     memset(&varInfo1, 0, sizeof(varInfo1));
     varInfo1.var_type = MP_VAR_B;
@@ -1700,7 +1673,6 @@ static int EC_RegripAtHS(int iProduct, short bLeaveRobotAtDepart, short bGripMan
 {
     char cmd[BUFF_LEN] = "SET_GROUP_VALUES REGRIPGROUP 3 %d %d %d;";
     int ret = 0;
-
     setVal(getStr(cmd, 3, iProduct, bLeaveRobotAtDepart, bGripManually));
     // Run SCAPE_OS_CORE to let SCAPE control the robot while a part is being picked.
     os_core(true);
@@ -1952,34 +1924,6 @@ static void os_core(short run_in_ec_mode)
         if (task_ready)
         {
             tasks[task_counter] = get_task(task_type, &task_left, task_counter);
-            // TaskType = 0 -> MotionTask
-            // TargetType = 4 -> VialowPrePick
-            // TargetType = 5 -> BP_APPROACH
-            // TargetType = 31 -> SafeViaAtBin
-            // run_task(&tasks[task_counter]);
-            /*
-            if (pre_execution_possible && task_type == 0)
-            {
-                if (tasks[task_counter].targetType == 4 || tasks[task_counter].targetType == 5 || tasks[task_counter].targetType == 31)
-                {
-                    run_task(&tasks[task_counter]);
-                }
-                else
-                {
-                    pre_execution_possible = false;
-                }
-            }
-            else
-            {
-                pre_execution_possible = false;
-            }
-            */
-            if (task_counter == 0)
-            {
-                // pre execution first task
-                run_task(&tasks[task_counter]);
-            }
-
             task_counter++;
             if (task_counter > MAX_SCAPE_TASKS_LEN - 1)
                 stopAndShowErr("scape tasks too much!");
@@ -1988,20 +1932,14 @@ static void os_core(short run_in_ec_mode)
         if (task_left == 0 && task_counter > 0)
         {
             taskRunStatus = Started;
-
-            for (i = 0; i < task_counter; i++)
-            {
-                run_task(&tasks[i]);
+            /* if (scapeRobot->fnGetExeMode()){
+                scapeRobot->fnMPRunScapeTask(tasks,task_counter);
             }
-
-            scapeRobot->fnWaitScapeTaskComplete(&taskRunStatus);
-            if (taskRunStatus == SliderColision)
-            {
-                setVal("SET ROBOT_COLLISION_STATE 1;");
-            }
-            if (taskRunStatus == FlangeCollision)
-            {
-                setVal("SET ROBOT_COLLISION_STATE 2;");
+            else */{
+                for (i = 0; i < task_counter; i++) run_task(&tasks[i]);
+                scapeRobot->fnWaitScapeTaskComplete(&taskRunStatus);
+                if (taskRunStatus == SliderColision) setVal("SET ROBOT_COLLISION_STATE 1;");
+                if (taskRunStatus == FlangeCollision) setVal("SET ROBOT_COLLISION_STATE 2;");
             }
             setVal("SET ROBOT_TASKS_LEFT 0;");
             task_counter = 0;
@@ -2258,6 +2196,7 @@ static void m_hs_to_bin(int group_id, int product_id)
 
 static void request_robot_pose(RobotPose pose)
 {
+    return ;
     switch (currentRobotPose)
     {
     case atUnknown:
@@ -2385,7 +2324,6 @@ static void oc_one_zone(Scp_Product *, short *);
 static void oc_two_zones_stat_cam(Scp_Product *, short *);
 static void oc_two_zones_tool_cam(Scp_Product *);
 static short place_part_on_hs(Scp_Product *, short manully_put);
-static short place_object(Scp_Product *);
 static void move_clear_and_empty_hs(Scp_Product *);
 static void start_oc_recognition(Scp_Product *, short);
 static void perform_regrip_at_hs(Scp_Product *);
@@ -2718,6 +2656,10 @@ static void oc_two_zones_stat_cam(Scp_Product *product, short *back_to_bp)
         }
     }
 
+    if (product->parts_on_hs < 2 && !product->bin_is_empty){
+        *back_to_bp = true;
+    }
+    
     // PRODUCT_DATA.OC_RECOGNITION_SUCCESS will only be true
     // if there is a part on the handling station and it
     // has been recognized.
@@ -2738,10 +2680,6 @@ static void oc_two_zones_stat_cam(Scp_Product *product, short *back_to_bp)
             *back_to_bp = true;
     }
 
-    if (product->parts_on_hs < 2){
-        *back_to_bp = true;
-    }
-    
     // This way of starting recogntion requires that we
     // always have "motion detection" enabled.
     if (product->parts_on_hs > 0)
@@ -2861,7 +2799,7 @@ static void pick_object(Scp_Product *product, Bin *bin)
         bin->picked_parts_count++;
         product->parts_bin_picked++;
         product->bin_is_empty = false;
-        get_object_height_in_bin(product,&bin->remain_parts_height_mm);
+        //get_object_height_in_bin(product,&bin->remain_parts_height_mm);
         break;
     case 1: // Unknown product
         stopAndShowCodeMsg(2001);
@@ -3004,78 +2942,6 @@ static short place_part_on_hs(Scp_Product *product, short manully_put)
         break;
     }
     return false;
-}
-
-static short place_object(Scp_Product *product)
-{
-    int result = 0;
-    short part_was_placed_on_hs = false;
-
-    result = EC_PlaceObject(product->product_id, &part_was_placed_on_hs);
-    switch (result)
-    {
-    case -2: // SCAPE Bin-Picking Manager was stopped
-        stopAndShowCodeMsg(902);
-        break;
-    case -1: // SCAPE Bin-Picking Manager was restarted
-        stopAndShowCodeMsg(901);
-        break;
-    case 0: // all ok
-        if (part_was_placed_on_hs)
-            product->parts_on_hs++;
-        return true;
-    case 1: // Unknown product
-        stopAndShowCodeMsg(18001);
-        break;
-    case 2: // No part was picked
-        stopAndShowCodeMsg(18002);
-        break;
-    case 4: // Handling station is already full!
-        stopAndShowCodeMsg(18004);
-        break;
-    case 5: // Place pose type is ROBOT POSE
-        stopAndShowCodeMsg(18005);
-        break;
-    case 10: // SCAPE Error
-        stopAndShowCodeMsg(18010);
-        break;
-    default:
-        // Unsupported return code
-        stopAndShowCodeMsg(18999);
-        break;
-    }
-    return false;
-}
-
-static void get_place_pose(Scp_Product *product, double *place_pose, int *place_frame)
-{
-    int result = 0;
-
-    result = EC_GetPlacePose(product->product_id, place_pose, place_frame);
-    switch (result)
-    {
-    case -2: // SCAPE Bin-Picking Manager was stopped
-        stopAndShowCodeMsg(902);
-        break;
-    case -1: // SCAPE Bin-Picking Manager was restarted
-        stopAndShowCodeMsg(901);
-        break;
-    case 0: // all ok
-        break;
-    case 1: // Unknown product
-        stopAndShowCodeMsg(4001);
-        break;
-    case 2: // No place pose is available
-        stopAndShowCodeMsg(4002);
-        break;
-    case 3: // Place position type is ROBOT POSE
-        stopAndShowCodeMsg(4003);
-        break;
-    default:
-        // Unsupported return code
-        stopAndShowCodeMsg(4999);
-        break;
-    }
 }
 
 static void start_oc_recognition(Scp_Product *product, short bWaitForAcqComplete)
@@ -3298,7 +3164,6 @@ static int scape_calibration(void)
 static int scape_initialize(unsigned int product_group_id, unsigned int product_number_in_group)
 {
     int i = 0;
-
     cleanMsg();
     currentRobotPose = atUnknown;
     products_num_of_current_group = product_number_in_group;
@@ -3526,6 +3391,613 @@ static int scape_pick(Bin *bin, short rescan, PickCfg pickCfg)
     return -999;
 }
 
+/*tuo pu project specific code*/
+const double tp_start_pose[6] = {435.359,-39.513,-212.004,0.0023,-0.0081,176.9633};
+const double tp_start_angle[6] = {-3.5071,-30.1972,-71.0887,0.003,-49.1165,0.4683};
+const int CHANGE_BIN = -1;
+const int OC_NO_PART_CAN_PICK = 0;
+const int OC_HAS_PART_TO_PICK = 1;
+const int OC_NEED_CLEAN = -1;
+
+void get_task_core(short run_in_ec_mode,Scape_Task_Internal tasks[],short* task_len)
+{
+    short io_ready = false, task_ready = false, stay_in_os_core = false;
+    short task_type = 0, task_left = -1, task_counter = 0, i = 0;
+
+    short ret_core_need = false;
+
+    *task_len = 0;
+    while (1)
+    {
+        is_IO_or_task_ready(&io_ready, &task_ready, &task_type, &stay_in_os_core);
+        if (stay_in_os_core == false && run_in_ec_mode) return;
+        if (io_ready){
+            setVal("SET GripSensor1_VALUE 1 GripSensor2_VALUE 1 GripSensor3_VALUE 1;");
+            setVal("SET ROBOT_SIGNAL_READY 0;");
+        }
+        if (task_ready){
+            if (ret_core_need) stopAndShowErr("get task core error, ret core need!");
+            tasks[task_counter] = get_task(task_type, &task_left, task_counter);
+            if (tasks[task_counter].user_task.job_id == JOB_GET_TCP_POSE){
+                for (i=0;i<6;i++) tasks[task_counter].user_task.target[i] = tp_start_pose[i];
+                send_scape_tcp_pose(tasks[task_counter]);
+                continue;
+            }
+            else if (tasks[task_counter].user_task.job_id == JOB_GET_JOINTS){
+                for (i=0;i<6;i++) tasks[task_counter].user_task.joints[i] = tp_start_angle[i];
+                send_scape_joint_value(tasks[task_counter]);
+                continue;
+            }
+            task_counter++;
+            *task_len = task_counter;
+            if (task_counter > MAX_SCAPE_TASKS_LEN - 1) stopAndShowErr("scape tasks too much!");
+        }
+
+        if (task_left == 0 && task_counter > 0){
+            ret_core_need = true;
+            setVal("SET ROBOT_TASKS_LEFT 0;");
+            task_counter = 0;
+            task_left = -1;
+        }
+    }
+}
+
+int EC_GetPickObjectTask(int iProduct, int *GripFamilyID, short *CalibrationIsNeed, short *AcqIsNeed,Scape_Task_Internal tasks[],short* task_len)
+{
+    char cmd[BUFF_LEN] = "SET_GROUP_VALUES PICKOBJSETGROUP 2 %d %d %d;";
+    int ret = 0;
+    setVal(getStr(cmd, 3, iProduct, 0, 1));
+    get_task_core(true,tasks,task_len);
+    ret = EC_WaitForCompletion(2);
+    getVal("GET_GROUP_VALUES PICKOBJGETGROUP;");
+    *GripFamilyID = (int)tempData[7];
+    *CalibrationIsNeed = (int)tempData[8];
+    *AcqIsNeed = (int)tempData[9];
+    return ret;
+}
+
+void tp_get_pick_object_task(Scp_Product *product, Bin *bin,Scape_Task_Internal tasks[],short* len)
+{
+    int result = 0;
+
+    request_robot_pose(atBin);
+    bin->bin_status = 0;
+    if (product->use_bp == false)
+        return;
+    result = EC_GetPickObjectTask(product->product_id,&product->grip_family_id, &product->bp_calib_needed, &product->bp_acq_needed,tasks,len);
+    switch (result)
+    {
+    case -2: // SCAPE Bin-Picking Manager was stopped
+        stopAndShowCodeMsg(902);
+        break;
+    case -1: // SCAPE Bin-Picking Manager was restarted
+        stopAndShowCodeMsg(901);
+        break;
+    case 0: // all ok
+        bin->bin_status = product->grip_family_id;
+        bin->picked_parts_count++;
+        product->parts_bin_picked++;
+        product->bin_is_empty = false;
+        get_object_height_in_bin(product,&bin->remain_parts_height_mm);
+        break;
+    case 1: // Unknown product
+        stopAndShowCodeMsg(2001);
+        break;
+    case 2: // No objects found
+        product->bin_is_empty = true;
+        product->height_is_initialized = false;
+        bin->bin_status = RC_BIN_FINISH;
+        break;
+    case 3: // Height initialization has not been performed
+        stopAndShowCodeMsg(2003);
+        break;
+    case 4: // Gripping failed 20 times in a row
+        stopAndShowCodeMsg(2004);
+        break;
+    case 5: // Layer is empty
+        product->layer_done = true;
+        bin->bin_status = RC_LAYER_FINISH;
+        //product->height_is_initialized = false;
+    case 9:
+        // Loaded product does not contain a bin-picking Session.
+        stopAndShowCodeMsg(2009);
+        break;
+    case 10: // SCAPE Error
+        stopAndShowCodeMsg(2010);
+        break;
+    case 20: // Camera connection error
+        stopAndShowCodeMsg(2020);
+        break;
+    case 21: // Camera images too bright
+        stopAndShowCodeMsg(2021);
+        break;
+    case 22: // Camera images too dark
+        stopAndShowCodeMsg(2022);
+        break;
+    case 23: // Sliding scanner error
+        stopAndShowCodeMsg(2023);
+        break;
+    case 24: // Empty point cloud 3 times in a row
+        stopAndShowCodeMsg(2024);
+        break;
+    case 30:  // No more PICKABLE parts in BIN, but at least one recognized part
+    	product->bin_is_empty = true;
+        bin->bin_status = RC_UNPICKABLE_PART_IN_BIN;
+        product->height_is_initialized = false;
+        break;
+    case 31:  // No more PICKABLE parts in LAYER, but at least one recognized part
+        bin->bin_status = RC_UNPICKABLE_PART_IN_LAYER;
+        //product->height_is_initialized = false;
+        break;
+    case 32:  // No recognized parts in BIN, but SOMETHING was left in bin
+    	product->bin_is_empty = true;
+        bin->bin_status = RC_SOMETHING_IN_BIN;
+        product->height_is_initialized = false;
+        break;
+    case 33:  // No recognized parts in LAYER, but SOMETHING was left in Layer
+        bin->bin_status = RC_SOMETHING_IN_LAYER;
+        //product->height_is_initialized = false;
+        break;    
+    default:
+        // Unsupported return code
+        stopAndShowCodeMsg(2999);
+        break;
+    }
+}
+
+int EC_GetPlaceOnHSTask(int iProduct, short *HSIsFull,Scape_Task_Internal tasks[],short* task_len)
+{
+    char cmd[BUFF_LEN] = "SET_GROUP_VALUES PLACEONHSSETGROUP 14 %d %d %d;";
+    int ret = 0;
+    setVal(getStr(cmd, 3, iProduct, 1, 0));
+    get_task_core(true,tasks,task_len);
+    ret = EC_WaitForCompletion(14);
+    getVal("GET ExtControlParamOut0 ExtControlParamOut1;");
+    *HSIsFull = (short)tempData[0];
+    return ret;
+}
+
+short tp_get_place_part_on_hs_task(Scp_Product *product,Scape_Task_Internal tasks[],short* task_len)
+{
+    int result = 0;
+
+    result = EC_GetPlaceOnHSTask(product->product_id, &product->hs_is_full,tasks,task_len);
+    switch (result)
+    {
+    case -2: // SCAPE Bin-Picking Manager was stopped
+        stopAndShowCodeMsg(902);
+        break;
+    case -1: // SCAPE Bin-Picking Manager was restarted
+        stopAndShowCodeMsg(901);
+        break;
+    case 0: // all ok
+        product->parts_on_hs++;
+        product->part_placed_on_hs = true;
+        return true;
+    case 1: // Unknown product
+        stopAndShowCodeMsg(14001);
+        break;
+    case 2: // No part was bin-picked
+        stopAndShowCodeMsg(14002);
+        break;
+    case 3: // Gripper was empty when robot reached HS
+        // stopAndShowCodeMsg(14003)
+        break;
+    case 4: // Handling station is already full!
+        stopAndShowCodeMsg(14004);
+        break;
+    case 5: // Place pose type is ROBOT POSE and PLACE_PART_MANUALLY is FALSE
+        stopAndShowCodeMsg(14005);
+        break;
+    case 6: // Place pose is not relative to Handling Station
+        stopAndShowCodeMsg(14006);
+        break;
+    case 10: // SCAPE Error
+        stopAndShowCodeMsg(14010);
+        break;
+    default:
+        // Unsupported return code
+        stopAndShowCodeMsg(14999);
+        break;
+    }
+    return false;
+}
+
+int EC_GetRegripAtHSTask(int iProduct, int *pGripFamilyID,Scape_Task_Internal tasks[],short* task_len)
+{
+    char cmd[BUFF_LEN] = "SET_GROUP_VALUES REGRIPGROUP 3 %d %d %d;";
+    int ret = 0;
+    setVal(getStr(cmd, 3, iProduct, 0, 0));
+    // Run SCAPE_OS_CORE to let SCAPE control the robot while a part is being picked.
+    get_task_core(true,tasks,task_len);
+    // Wait until SCAPE has carried out the EC API Command
+    ret = EC_WaitForCompletion(3);
+    getVal("GET ExtControlParamOut0;");
+    *pGripFamilyID = tempData[0];
+    return ret;
+}
+
+void tp_get_regrip_at_hs_task(Scp_Product *product,Scape_Task_Internal tasks[],short* task_len)
+{
+    int result = 0;
+
+
+    product->oc_part_was_picked = false;
+    result = EC_GetRegripAtHSTask(product->product_id, &product->grip_family_id,tasks,task_len);
+    switch (result)
+    {
+    case -2: // SCAPE Bin-Picking Manager has been stopped
+        stopAndShowCodeMsg(902);
+        break;
+    case -1: // SCAPE Bin-Picking Manager has been re-started
+        stopAndShowCodeMsg(901);
+        break;
+    case 0: // all ok
+        product->parts_on_hs--;
+        product->oc_part_was_picked = true;
+        product->part_placed_on_hs = false;
+        break;
+    case 1: // Unknown product
+        stopAndShowCodeMsg(3001);
+        break;
+    case 2: // No objects were recognized
+        product->oc_part_was_picked = false;
+        break;
+    case 3: // Regrip at HS failed
+        product->oc_part_was_picked = false;
+        break;
+    case 10: // SCAPE Error
+        stopAndShowCodeMsg(3010);
+        break;
+    default:
+        // Unsupported return code
+        stopAndShowCodeMsg(3999);
+        break;
+    }
+}
+
+// check_oc_recognition_result(Scp_Product *product)
+int tp_check_oc_result(Scp_Product* product){
+    int i = 0;
+    if (product->parts_on_hs == 0) return OC_NO_PART_CAN_PICK;
+    check_oc_recognition_result(product);
+    if (product->oc_recog_success == false) return OC_NEED_CLEAN;
+    return OC_HAS_PART_TO_PICK;
+}
+
+ScapeTask tp_get_via_task(const int product)
+{
+    Scape_Task_Internal task={0};
+    int i;
+    task.task_was_executed = false;
+    task.user_task.taskIndex = 1;
+    task.user_task.taskNumInTotal = 1;
+    task.user_task.motionValid = false;
+    task.user_task.motionType = NotMov;
+    // if (product == 1){
+    //     task.user_task.target[0] = 974;
+    //     task.user_task.target[1] = -236;
+    //     task.user_task.target[2] = -279;
+    //     task.user_task.target[3] = 0;
+    //     task.user_task.target[4] = 0;
+    //     task.user_task.target[5] = 177;
+    //     task.user_task.joints[0] = -12;
+    //     task.user_task.joints[1] = 29;
+    //     task.user_task.joints[2] = -20;
+    //     task.user_task.joints[3] = 0;
+    //     task.user_task.joints[4] = -42;
+    //     task.user_task.joints[5] = 10;
+    // }
+    // else{
+    //     task.user_task.target[0] = 974;
+    //     task.user_task.target[1] = 224;
+    //     task.user_task.target[2] = -179;
+    //     task.user_task.target[3] = 0;
+    //     task.user_task.target[4] = 0;
+    //     task.user_task.target[5] = 177;
+    //     task.user_task.joints[0] = 13.3;
+    //     task.user_task.joints[1] = 28;
+    //     task.user_task.joints[2] = -19;
+    //     task.user_task.joints[3] = 0;
+    //     task.user_task.joints[4] = -41;
+    //     task.user_task.joints[5] = -16;
+    // }
+    task.user_task.speed = 100;
+    task.user_task.acc = 100;
+    task.user_task.blend = 200;
+    task.user_task.logicValid = true;
+    task.user_task.job_id = 226;
+    task.user_task.par0 = product;
+    task.user_task.par1 = 0;
+    task.user_task.par2 = 0;
+    return task.user_task;
+}
+
+void tp_move_to_via_pos(Scp_Product* product){
+    ScapeTask via_task = tp_get_via_task(product->product_id);
+    scapeRobot->fnRunScapeTask(&via_task);
+}
+void tp_clear_and_empty_hs(Scp_Product *product);
+int tp_pick_and_place_on_HS(Scp_Product* product,Bin *bin){
+    pick_object(product,bin);
+    if (product->bin_is_empty) return CHANGE_BIN;
+    //tp_move_to_via_pos(product);
+    int check_result = tp_check_oc_result(product);
+    if (check_result == OC_NEED_CLEAN){
+        tp_clear_and_empty_hs(product);
+    }
+    place_part_on_hs(product,false);
+    if (!product->oc_recog_started && product->parts_on_hs > 0) start_oc_recognition(product, false);
+    return product->grip_family_id;
+}
+
+int tp_get_pick_and_place_on_HS(Scp_Product* product,Bin* bin,Scape_Task_Internal tasks[],short* len){
+    Scape_Task_Internal _tasks[15];
+    short _len=0,j;
+    tp_get_pick_object_task(product,bin,tasks,len);
+    if (product->bin_is_empty) return CHANGE_BIN;
+    ScapeTask via_task = tp_get_via_task(product->product_id);
+    tasks[*len].user_task = via_task;
+    (*len)++;
+    tp_get_place_part_on_hs_task(product,_tasks,&_len);
+    for(j=0;j<_len;j++) {
+        tasks[j+(*len)] = _tasks[j];
+    }
+    return product->grip_family_id;
+}
+
+ScapeTask tp_get_ExitJob(const int counter,const int p0,const int p1,const int p2)
+{
+    Scape_Task_Internal task={0};
+    int i;
+    task.task_was_executed = false;
+    task.user_task.taskIndex = counter;
+    task.user_task.taskNumInTotal = counter;
+    task.user_task.motionValid = false;
+    task.user_task.motionType = NotMov;
+    for (i = 0; i < 6; i++)
+        task.user_task.target[i] = 0;
+    for (i = 0; i < SCAPE_ROBOT_AXIS_NUM; i++)
+        task.user_task.joints[i] = 0;
+    task.user_task.speed = 0;
+    task.user_task.acc = 0;
+    task.user_task.blend = 0;
+    task.user_task.logicValid = true;
+    task.user_task.job_id = JOB_EXIT;
+    task.user_task.par0 = p0;
+    task.user_task.par1 = p1;
+    task.user_task.par2 = p2;
+    return task.user_task;
+}
+
+void tp_clear_and_empty_hs(Scp_Product *product)
+{
+    run_job(JOB_MOV_CLEAR_HS,product->product_group_id, product->product_id, 0);
+    run_job(JOB_EMPTY_HS, product->product_group_id, product->product_id, 0);
+    if (product->use_oc)
+    {
+        product->oc_recog_success = false;
+        product->oc_recog_started = false;
+        product->parts_on_hs = 0;
+        product->oc_part_was_picked = false;
+        product->part_placed_on_hs = false;
+    }
+}
+
+void tp_empty_hs(Scp_Product *product)
+{
+    run_job(JOB_EMPTY_HS, product->product_group_id, product->product_id, 0);
+    if (product->use_oc)
+    {
+        product->oc_recog_success = false;
+        product->oc_recog_started = false;
+        product->parts_on_hs = 0;
+        product->oc_part_was_picked = false;
+        product->part_placed_on_hs = false;
+    }
+}
+
+static void waitSec(float sec)
+{
+    mpTaskDelay((int)(1000 * sec/mpGetRtc()));
+}
+
+static void put_i_val(int var,unsigned short idx)
+{
+    MP_USR_VAR_INFO varInfo;
+
+    memset(&varInfo, 0, sizeof(varInfo));
+    varInfo.var_type = MP_VAR_I;
+    varInfo.var_no = idx;
+    varInfo.val.i = var;
+    while(1)
+    {
+        if(mpPutUserVars(&varInfo) == 0) break;
+        waitSec(0.01);
+    }
+}
+int tp_pick(Bin *bin, short forcescan){
+    Scape_Task_Internal t_pick_place[15];
+    Scape_Task_Internal t_regrip[10];
+    ScapeTask t_robot[30];
+    short t_len_pick_place=0, t_len_regrip = 0,t_len_robot=0;
+    Scp_Product* current_product = NULL;
+    int check_result = 0 ,rc = 0,i=0;
+    if (bin == NULL) return -10000;
+    current_product = &product_data[bin->product_id - 1];
+    height_init_if_needed(current_product, bin->start_height_mm);
+    acquire_bin_data(current_product, forcescan);
+    check_result = tp_check_oc_result(current_product);
+    if (check_result == OC_NEED_CLEAN){
+        tp_empty_hs(current_product);
+    }
+    pick_object(current_product,bin);
+    if (current_product->bin_is_empty){
+        rc = CHANGE_BIN;
+        put_i_val(rc, 65);
+        current_product->grip_family_id = rc;
+        ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+        scapeRobot->fnRunScapeTask(&finalTask);
+        if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
+        return rc;
+    }
+    if (check_result == OC_HAS_PART_TO_PICK){
+        place_part_on_hs(current_product,false);
+        perform_regrip_at_hs(current_product);
+    }
+    else {
+        PLACE:
+        place_part_on_hs(current_product,false);
+        start_oc_recognition(current_product, false);
+        pick_object(current_product,bin);
+        if (current_product->bin_is_empty){
+            rc = CHANGE_BIN;
+            put_i_val(rc, 65);
+            current_product->grip_family_id = rc;
+            ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+            scapeRobot->fnRunScapeTask(&finalTask);
+            if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
+            return rc;
+        }
+        check_result = tp_check_oc_result(current_product);
+        if (check_result == OC_HAS_PART_TO_PICK){
+            place_part_on_hs(current_product,false);
+            perform_regrip_at_hs(current_product);
+        }
+        else{
+            tp_clear_and_empty_hs(current_product);
+            goto PLACE;
+        }
+    }
+    put_i_val(current_product->grip_family_id, 65);
+    ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+    scapeRobot->fnRunScapeTask(&finalTask);
+    if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
+    start_of_cycle(false);
+    return current_product->grip_family_id;
+}
+
+
+//int tp_pick(Bin *bin){
+
+    // 返回非负 GripFaimily ID, 返回负数 箱子需要移动
+    // Scape_Task_Internal t_pick_place[15];
+    // Scape_Task_Internal t_regrip[10];
+    // ScapeTask t_robot[30];
+    // short t_len_pick_place=0, t_len_regrip = 0,t_len_robot=0;
+    // Scp_Product* current_product = NULL;
+    // int check_result = 0 ,rc = 0,i=0;
+    
+    // if (bin == NULL) {
+    //     put_i_val(-1, 65);
+    //     ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+    //     scapeRobot->fnRunScapeTask(&finalTask);
+    //     return -10000;
+    // }
+    // current_product = &product_data[bin->product_id - 1];
+    // height_init_if_needed(current_product, bin->start_height_mm);
+    // acquire_bin_data(current_product, current_product->bp_acq_needed);
+    // check_result = tp_check_oc_result(current_product);
+    // if (check_result == OC_NEED_CLEAN) tp_clear_and_empty_hs(current_product);
+    // pick_object(current_product,bin);
+    // if (current_product->bin_is_empty) {
+    //     put_i_val(-1, 65);
+    //     ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+    //     scapeRobot->fnRunScapeTask(&finalTask);
+    //     return CHANGE_BIN;
+    // }
+    // if (check_result == OC_HAS_PART_TO_PICK){
+    //     place_part_on_hs(current_product,false);
+    //     perform_regrip_at_hs(current_product);
+    // }
+    // else {
+    //     PLACE:
+    //     place_part_on_hs(current_product,false);
+    //     start_oc_recognition(current_product, false);
+    //     pick_object(current_product,bin);
+    //     if (current_product->bin_is_empty) {
+    //         put_i_val(-1, 65);
+    //         ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+    //         scapeRobot->fnRunScapeTask(&finalTask);
+    //         return CHANGE_BIN;
+    //     }
+    //     check_result = tp_check_oc_result(current_product);
+    //     if (check_result == OC_HAS_PART_TO_PICK){
+    //         place_part_on_hs(current_product,false);
+    //         perform_regrip_at_hs(current_product);
+    //     }
+    //     else{
+    //         tp_clear_and_empty_hs(current_product);
+    //         goto PLACE;
+    //     }
+    // }
+    // ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+    // scapeRobot->fnRunScapeTask(&finalTask);
+    // if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
+    // start_of_cycle(false);
+    // put_i_val(current_product->grip_family_id, 65);
+    // return current_product->grip_family_id;
+
+
+    // if (){
+        
+    //     // int check_result = tp_check_oc_result(current_product);
+    //     // if (check_result == OC_NEED_CLEAN){
+    //     //     tp_clear_and_empty_hs(current_product);
+    //     // }
+    //     // place_part_on_hs(current_product,false);
+    //     // if (rc < 0) return CHANGE_BIN;
+    //     // if (current_product->parts_on_hs < 2){
+    //     //     //tp_move_to_via_pos(current_product);
+    //     //     // rc = tp_pick_and_place_on_HS(current_product,bin);
+    //     //     pick_object(current_product,bin);
+    //     //     if (current_product->bin_is_empty) return CHANGE_BIN;
+    //     //     //tp_move_to_via_pos(current_product);
+    //     //     int check_result = tp_check_oc_result(current_product);
+    //     //     if (check_result == OC_NEED_CLEAN){
+    //     //         tp_clear_and_empty_hs(current_product);
+    //     //         goto BPP;
+    //     //     }
+    //     //     place_part_on_hs(current_product,false);
+    //     //     if (rc < 0) return CHANGE_BIN;
+    //     // }
+    //     // perform_regrip_at_hs(current_product);
+    //     ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
+    //     scapeRobot->fnRunScapeTask(&finalTask);
+    //     if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
+    //     start_of_cycle(false);
+    //     return 0;
+    // }
+
+    // if (check_result == OC_HAS_PART_TO_PICK){ // oc 有一个可以抓取的产品
+    //     rc = tp_get_pick_and_place_on_HS(current_product,bin,t_pick_place,&t_len_pick_place);
+    //     if (rc < 0) return CHANGE_BIN;
+    //     tp_get_regrip_at_hs_task(current_product,t_regrip,&t_len_regrip);
+    //     t_len_robot = t_len_pick_place + t_len_regrip;
+    //     for(i=0;i<t_len_pick_place;i++){
+    //         t_robot[i] = t_pick_place[i].user_task;
+    //     }
+    //     for(i=0;i<t_len_regrip;i++){
+    //         t_robot[i+t_len_pick_place] = t_regrip[i].user_task;
+    //     }
+    //     for(i=0;i<t_len_robot;i++){
+    //         t_robot[i].taskIndex = i+1;
+    //         t_robot[i].taskNumInTotal = t_len_robot;
+    //     }
+    //     t_robot[t_len_robot] = tp_get_ExitJob(t_len_robot+1,current_product->grip_family_id,0,0);
+    //     t_len_robot++;
+    //     for(i=0;i<t_len_robot;i++){
+    //         scapeRobot->fnRunScapeTask(&t_robot[i]);
+    //     }
+    //     if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
+    //     start_of_cycle(false);
+    //     return 0;
+    // }
+//}
+
+/*tuo pu project specific code*/
+
+
 static int scape_start_scan(Bin* bin)
 {
     //if (bin->bin_status < 0) return 0;
@@ -3553,166 +4025,6 @@ static int scape_start_hs_recognition(Bin* bin)
     return 0;
 }
 
-static void waitSec(float sec)
-{
-    mpTaskDelay((int)(1000 * sec/mpGetRtc()));
-}
-
-static void put_b_val(unsigned short var,unsigned char idx)
-{
-    MP_USR_VAR_INFO varInfo;
-    
-    memset(&varInfo, 0, sizeof(varInfo));
-    varInfo.var_type = MP_VAR_B;
-    varInfo.var_no = idx;
-    varInfo.val.b = var;
-    while(1)
-    {
-        if(mpPutUserVars(&varInfo) == 0) break;
-        waitSec(0.01);
-    }
-}
-
-static void scape_pick_3D(Bin* bin){
-    request_robot_pose(atBinEntry);
-    if (bin->bin_status < 0){
-        update_bin(&product_data[bin->product_id-1], bin);}
-    height_init_if_needed(&product_data[bin->product_id-1], bin->start_height_mm);
-    if (product_data[bin->product_id-1].bp_acq_needed == true)
-    {
-        run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
-        acquire_bin_data(&product_data[bin->product_id - 1], true);
-    }
-    pick_object(&product_data[bin->product_id-1], bin);
-    if (product_data[bin->product_id-1].bin_is_empty == true){
-        put_b_val(1, 90);
-    }
-    else{
-        put_b_val(0, 90);
-    }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-}
-
-static void scape_place_on_hs(Bin* bin){
-    place_part_on_hs(&product_data[bin->product_id-1], false);
-    if (product_data[bin->product_id-1].part_placed_on_hs == false){
-        put_b_val(1, 91);
-    }
-    else{
-        put_b_val(0, 91);
-    }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-}
-
-static void scape_regrip_at_hs(Bin* bin){
-    perform_regrip_at_hs(&product_data[bin->product_id-1]);
-    if (product_data[bin->product_id-1].oc_part_was_picked == false){
-        put_b_val(1, 92);
-    }
-    else{
-        put_b_val(0, 92);
-    }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-}
-
-static void scape_check_oc_result(Bin* bin){
-    check_oc_recognition_result(&product_data[bin->product_id-1]);
-    if (product_data[bin->product_id-1].oc_recog_success == false){
-        put_b_val(1, 93);
-    }
-    else{
-        put_b_val(0, 93);
-    }
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-}
-
-static void scape_scan_3D(Bin* bin){
-    run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
-    acquire_bin_data(&product_data[bin->product_id - 1], true);
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-}
-
-static void scape_scan_2D(Bin* bin){
-    start_oc_recognition(&product_data[bin->product_id - 1], false);
-    run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
-}
-
-static void pick(Bin* bin){
-    start:
-    run_job(JOB_MOVE_CLEAR_BIN, bin->product_group_id, bin->product_id, 0);
-    request_robot_pose(atBinEntry);
-    if (bin->bin_status < 0){
-        update_bin(&product_data[bin->product_id-1], bin);}
-    height_init_if_needed(&product_data[bin->product_id-1], bin->start_height_mm);
-    if (product_data[bin->product_id-1].bp_acq_needed == true)
-    {
-        run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
-        acquire_bin_data(&product_data[bin->product_id - 1], true);
-    }
-    pick_object(&product_data[bin->product_id-1], bin);
-    if(product_data[bin->product_id-1].bin_is_empty == true){
-        run_job(JOB_MOVE_BELT, bin->product_group_id, bin->product_id, 0);
-        goto start;
-    }
-    run_job(JOB_UNLOCK_BELT, bin->product_group_id, bin->product_id, 0);
-}
-
-static void add(Bin *bin){
-    pick(bin);
-    place_part_on_hs(&product_data[bin->product_id-1], false);
-    pick(bin);
-    place_part_on_hs(&product_data[bin->product_id-1], false);
-    run_job(JOB_HOMING, bin->product_group_id, bin->product_id, 0);
-    start_oc_recognition(&product_data[bin->product_id - 1], false);
-    run_job(JOB_LOCK_BELT, bin->product_group_id, bin->product_id, 0);
-    acquire_bin_data(&product_data[bin->product_id - 1], true);
-    put_b_val(2, 10*(bin->product_id)+21);
-}
-
-static void place(Bin *bin){
-    int ng = 0;
-    first:
-    check_oc_recognition_result(&product_data[bin->product_id-1]);
-    put_b_val(bin->product_id, 81);
-    run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
-    put_b_val(0, 81);
-    perform_regrip_at_hs(&product_data[bin->product_id-1]);
-    if(product_data[bin->product_id-1].oc_part_was_picked == false){
-        run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
-        add(bin);
-        goto first;
-    }
-    run_job(JOB_PLACE_PART, bin->product_group_id, bin->product_id, 0);
-    start_oc_recognition(&product_data[bin->product_id - 1], false);
-    second:
-    check_oc_recognition_result(&product_data[bin->product_id-1]);
-    put_b_val(bin->product_id, 81);
-    run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
-    put_b_val(0, 81);
-    perform_regrip_at_hs(&product_data[bin->product_id-1]);
-    if(product_data[bin->product_id-1].oc_part_was_picked == false){
-        ng = 1;
-        run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
-        pick(bin);
-        place_part_on_hs(&product_data[bin->product_id-1], false);
-        put_b_val(bin->product_id, 81);
-        run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
-        put_b_val(0, 81);
-        start_oc_recognition(&product_data[bin->product_id - 1], false);
-        goto second;
-    }
-    run_job(JOB_PLACE_PART, bin->product_group_id, bin->product_id, 0);
-    run_job(JOB_HOMING, bin->product_group_id, bin->product_id, 0);
-    if(ng == 1){
-        acquire_bin_data(&product_data[bin->product_id - 1], true);
-    }
-    put_b_val(0, 10*(bin->product_id)+21);
-}
-
-static void puterr(){
-    run_job(JOB_PUT_ERROR, 0, 0, 0);
-}
-
 int init_robot(Robot *robot, IScp *scp)
 {
     int rc = 0;
@@ -3737,15 +4049,6 @@ int init_robot(Robot *robot, IScp *scp)
     scp->scp_pick = scape_pick;
     scp->scp_start_scan = scape_start_scan;
     scp->scp_start_handling_station_recog = scape_start_hs_recognition;
-    scp->scp_check_oc_result = scape_check_oc_result;
-    scp->scp_pick_3D = scape_pick_3D;
-    scp->scp_place_on_handling_station = scape_place_on_hs;
-    scp->scp_regrip_at_handling_station = scape_regrip_at_hs;
-    scp->scp_scan_3D = scape_scan_3D;
-    scp->scp_scan_2D = scape_scan_2D;
-    scp->pick = pick;
-    scp->add = add;
-    scp->place = place;
-    scp->puterr = puterr;
+    scp->TPPick = tp_pick;
     return 0;
 }

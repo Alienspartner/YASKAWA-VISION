@@ -1,19 +1,7 @@
-﻿// this task manage scape jobs
-/* 
-2022-05-31
-update bin left parts height - I66
-2022-11-19
-修正了一个bug,getUserChoice, 只有当读取到的选择不为0时候，在获取完用户选择时才会重置选择为0 否则有可能
-在mp程序刚读完选择，而且此时选择为0，恰好在这时候，TP发送过来新的选择，然而此时的选择已经被mp程序重置为0（0即为空选择）
-所以会导致mp程序无法收到用户选择，然而TP程序也会在core中循环等待任务，mp程序也会一直循环等待用户选择，导致程序无法正常工作。
-2022-12-01
-新松更新了立库，所以80站4个供料位置换箱操作均不影响剩余箱子的抓取，所以做出相应更新，提高换箱的效率
-2023-02-09
-scapeBase.c 更新，stopshowmsg 函数，如果输出的errorcode 余100 等于20 表示相机断开连结，将设置一个输出信号
-*/
+﻿
 #include "T.h"
 #include "IScpRobot.h"
-
+// #include "stdbool.h"
 
 
 #define DBG_YRC 0
@@ -46,8 +34,7 @@ scapeBase.c 更新，stopshowmsg 函数，如果输出的errorcode 余100 等于
 #define ROBOT_IN_CALIB 0
 #define ROBOT_IN_BIN_PICKING 1
 
-
-typedef enum {CALIBRATION_10 = 10,BP_INITIALIZE_20 = 20, SCAPE_PICK_30 = 30, START_BIN_SCAN_40 = 40,START_HS_RECOG_50 = 50,TUOPU_60 = 60}Choice;
+typedef enum {CALIBRATION_10 = 10,BP_INITIALIZE_20 = 20, SCAPE_PICK_30 = 30, START_BIN_SCAN_40 = 40,START_HS_RECOG_50 = 50}Choice;
 typedef struct _YRC_TASK
 {
     // general
@@ -89,7 +76,8 @@ extern short T2_RESET_T1;
 extern int T1_ID;
 extern int T2_ID;
 int current_task_idx = 0, current_tasks_num = 0;
-
+int last_pick = 0;
+int last_result = 1;
 
 static void waitSec(float sec)
 {
@@ -120,13 +108,13 @@ static void end_task1(void)
 
 static void set_io(unsigned int address,short value)
 {
-    MP_IO_DATA* sData;
+    MP_IO_DATA sData;
     LONG num = 1;
 
-    sData->ulAddr = address;
-    sData->ulValue = value;
-
-    mpWriteIO(sData,num);
+    sData.ulAddr = address;
+    sData.ulValue = value;
+    
+    mpWriteIO(&sData,num);
 }
 
 static short get_io(unsigned int address)
@@ -203,7 +191,7 @@ static void stopAndShowErrMsg(char* err_msg)
     {
         put_s_val(" ",T1_ERROR_S_55);
     }
-    end_task1();    
+    end_task1();
 }
 
 static void put_r_val(float var,unsigned short idx)
@@ -409,6 +397,16 @@ static void get_scape_frame()
 
 }
 
+static int getProgramExeMode(){
+    return 0;
+    MP_MODE_RSP_DATA rData;
+    const int PLAY = 2;
+	memset(&rData, 0x00, sizeof(rData));
+	const int rc = mpGetMode(&rData);
+    if (rData.sMode == PLAY && robot_current_working == 555) return 1;
+    return 0;
+}
+
 static int update_speed(double speed,MotionType mov_type)
 {
     if (mov_type == MOVEJ)
@@ -488,7 +486,7 @@ static void pulseToAngle(long* pulse, double* angle)
 {
     long angleOut[MP_GRP_AXES_NUM];
     int result = 0;
-    
+
     result = mpConvPulseToAngle(0,pulse,angleOut);
     if (result == E_KINEMA_FAILURE)
     {
@@ -751,6 +749,7 @@ static void MovJ(unsigned int idx,ScapeTask task)
         if(DBG_YRC) puts("\n rob: MovJ move to joints directly\n");
         angleToPulse(task.joints, pulse);
         put_j_val(pulse, yrc_task[idx].p_pose_idx);
+        stopAndShowErrMsg("task.target == NULL");
     }
     else
     {
@@ -775,7 +774,7 @@ static void MovJ(unsigned int idx,ScapeTask task)
 
 static void MovL(unsigned int idx,ScapeTask task)
 {
-    long p[6] = {};
+    long p[6] = {0};
     double pose[6] = {};
     int i = 0;
     unsigned int config = MP_FIG_SIDE;
@@ -846,18 +845,14 @@ static void runScapeTask(ScapeTask* task)
             }
         }
     }
-    
     SEND_TASK:
     // step 1 write task data to TP
     current_task_idx = task->taskIndex;
     put_b_val(task->taskIndex, yrc_task[free_yrc_task_idx].b_task_index_idx);
     current_tasks_num = task->taskNumInTotal;
     put_b_val(task->taskNumInTotal, yrc_task[free_yrc_task_idx].b_task_num_idx);
-
     put_b_val(task->motionType,yrc_task[free_yrc_task_idx].b_motionType_idx);
-
     put_i_val(task->job_id,yrc_task[free_yrc_task_idx].i_job_id_idx);
-    
     put_b_val(0,ROBOT_IN_POSE_B_70);
     // write motion data if needed
     if (task->motionValid)
@@ -871,7 +866,6 @@ static void runScapeTask(ScapeTask* task)
             MovJ(free_yrc_task_idx, *task);
         }
     }
-
     // write logical data if needed
     if (task->logicValid)
     {
@@ -923,6 +917,437 @@ static void runScapeTask(ScapeTask* task)
     return;
 }
 
+// static void StopMotion(const int grpNo){
+// 	if (mpMotStop(0) < 0)
+// 	{
+// 		stopAndShowErrMsg("mpMotStop(0)\n");
+// 	}
+// 	if (mpMotTargetClear(0x0f, 0) < 0)
+// 	{
+// 		stopAndShowErrMsg("mpMotTargetClear(0)\n");
+// 	}
+// }
+
+/* static void StartMotion(const int grpNo){
+    // motion start!
+	int rc = 0;
+	LONG nRet;
+	MP_PLAY_STATUS_RSP_DATA dxRet;
+    MP_TASK_SEND_DATA sData;
+    MP_CUR_JOB_RSP_DATA rData;
+    MP_HOLD_SEND_DATA sdHold;
+    MP_STD_RSP_DATA rHold;
+    MP_SERVO_POWER_SEND_DATA sPower;
+    MP_STD_RSP_DATA rPower;
+    MP_SERVO_POWER_RSP_DATA serverPower;
+    memset(&sdHold,0,sizeof(sdHold));
+    memset(&sPower,0,sizeof(sPower));
+    memset(&serverPower,0,sizeof(serverPower));
+	while (1)
+	{   
+        rc = mpGetPlayStatus(&dxRet);
+        if (rc == 0 && dxRet.sStart == 1){ // start on
+            sdHold.sHold = 1; // hold on
+            rc = mpHold(&sdHold,&rHold);
+            waitSec(0.01);
+            sdHold.sHold = 0; // hold off
+            rc = mpHold(&sdHold,&rHold);
+        }
+        // else{
+        //     sdHold.sHold = 0; // hold off
+        //     rc = mpHold(&sdHold,&rHold);
+        // }
+        rc = mpGetServoPower(&serverPower);
+        if (serverPower.sServoPower == 0){ // server power off
+            sPower.sServoPower = 1;
+            rc = mpSetServoPower(&sPower,&rPower);
+        }
+        
+        t1_log("start motion");
+		if ((rc = mpMotStart(0)) < 0)
+		{
+			if ((E_MP_MOT_SVOFF != rc) && (E_MP_MOT_HOLD != rc))
+			{
+				StopMotion(grpNo);
+				stopAndShowErrMsg("mpMotStart(0) falied");
+			}
+		}
+		else if (0 == rc)
+		{
+			return;
+		}
+		waitSec(0.2);
+	}
+} */
+
+// static void calculate_best_config1(const double* pTarget, const double* jConfig, BITSTRING* result_config, long* ResultPuls)
+// {
+// 	MP_COORD coord;
+// 	BITSTRING config1, config2;
+// 	long start_angle[MP_GRP_AXES_NUM];
+
+// 	start_angle[0] = dtl(jConfig[0] * 10000);
+// 	start_angle[1] = dtl(jConfig[1] * 10000);
+// 	start_angle[2] = dtl(jConfig[2] * 10000);
+// 	start_angle[3] = dtl(jConfig[3] * 10000);
+// 	start_angle[4] = dtl(jConfig[4] * 10000);
+// 	start_angle[5] = dtl(jConfig[5] * 10000);
+
+// 	// calculate configuration
+// 	int status = mpConvAxesToCartPos(0, start_angle, SCAPE_TOOL_INDEX, &config1, &coord);
+// 	if (status == E_KINEMA_FAILURE)
+// 	{
+// 		waitSec(0.01);
+// 		status = mpConvAxesToCartPos(0, start_angle, SCAPE_TOOL_INDEX, &config1, &coord);
+// 		if (status != 0)
+// 		{
+// 			stopAndShowErrMsg("cal config error!");
+// 		}
+// 	}
+// 	if (status != 0)
+// 	{
+// 		stopAndShowErrMsg("cal config error!");
+// 	}
+
+// 	//
+// 	// TODO Add checks for flip
+// 	//
+
+// 	// D00: Front
+// 	// D01: Upper arm
+// 	// D02: 0: No flip
+// 	// D03: 0: R < 180 1: R >= 180
+// 	// D04: 0: T < 180 1: T >= 180
+// 	// D05: 0: S < 180 1: S >= 180
+// 	// D06 - D15: Reserved by manufacturer
+// 	config1 = config1 | 0x4;
+
+// 	// 6 axis roation D04
+// 	if (config1 & 0x10)
+// 	{
+// 		//printf("Forcing D04 = 0 \n");
+// 		config2 = config1 & 0xFFFFFFEF; // Set D04 = 0
+// 	}
+// 	else
+// 	{
+// 		//printf("Forcing D04 = 1 \n");
+// 		config2 = config1 | 0x10; // Set D05 = 1
+// 	}
+
+// 	// Use the coordinatates from the SCAPE PC
+// 	coord.x = (long)(pTarget[0] * 1000);
+// 	coord.y = (long)(pTarget[1] * 1000);
+// 	coord.z = (long)(pTarget[2] * 1000);
+// 	coord.rz = (long)(pTarget[3] * 10000);
+// 	coord.ry = (long)(pTarget[4] * 10000);
+// 	coord.rx = (long)(pTarget[5] * 10000);
+
+// 	long angle1Output[MP_GRP_AXES_NUM], angle2Output[MP_GRP_AXES_NUM];
+// 	if (OK != mpConvCartPosToAxes(0, &coord, SCAPE_TOOL_INDEX, config1, NULL, MP_KINEMA_FIG, angle1Output))
+// 	{
+// 		stopAndShowErrMsg("cmpConvCartPosToAxes angle1 faild");
+// 	}
+// 	if (OK != mpConvCartPosToAxes(0, &coord, SCAPE_TOOL_INDEX, config2, NULL, MP_KINEMA_FIG, angle2Output))
+// 	{
+// 		stopAndShowErrMsg("cmpConvCartPosToAxes angle2 faild");
+// 	}
+
+// 	const long config1_delta = abs(start_angle[5] - angle1Output[5]);
+// 	const long config2_delta = abs(start_angle[5] - angle2Output[5]);
+// 	if (config1_delta <= config2_delta)
+// 	{
+// 		//printf("Chosing angle 1 \n");
+// 		*result_config = config1;
+// 		if (0 != mpConvAngleToPulse(0, angle1Output, ResultPuls))
+// 		{
+// 			stopAndShowErrMsg("mpConvAngleToPulse angle 1");
+// 		}
+// 	}
+// 	else
+// 	{
+// 		//printf("Chosing angle 2 \n");
+// 		*result_config = config2;
+// 		if (0 != mpConvAngleToPulse(0, angle2Output, ResultPuls))
+// 		{
+// 			stopAndShowErrMsg("mpConvAngleToPulse angle 2");
+// 		}
+// 	}
+// }
+
+// static int AddedTaskToBuffer(ScapeTask* task, int grpNo, long pulse[])
+// {
+// 	// if ((task->joints == NULL) && (task->motionType == MOVEJ))
+// 	// {
+// 	// 	return 0;
+// 	// }
+// 	int rc = 0;
+
+// 	MP_SPEED spd;
+// 	MP_TARGET target;
+//     MP_USR_VAR_INFO varInfo;
+// 	/* long p[SCAPE_ROBOT_AXIS_NUM + 2] = {};
+// 	//double newJoints[MAX_ROBOT_AXIS+2] = {0};
+// 	unsigned int config = MP_FIG_SIDE;
+// 	double pose[SCAPE_ROBOT_AXIS_NUM] = { 0 };
+
+// 	// Copy over the Target data
+// 	int jointIndex;
+// 	for (jointIndex = 0; jointIndex < 6; jointIndex++)
+// 	{
+// 		pose[jointIndex] = task->target[jointIndex];
+// 	}
+
+// 	// calculate the configuration
+// 	calculate_best_config1(task->target, task->joints, &config, pulse);
+// 	// Convert pose to motoman pos
+// 	poseToMotman(pose, p); */
+    
+//     // yrc_task[0].p_pose_idx
+// 	// Set reset the target
+// 	memset(&target, 0, sizeof(target));
+//     memset(&varInfo, 0, sizeof(varInfo));
+//     varInfo.var_type = MP_VAR_P;
+// 	varInfo.var_no = 51;
+// 	// Set Index
+// 	target.id = task->taskIndex;
+//     angleToPulse(task->joints, pulse);
+//     put_j_val(pulse, 51);
+//     if (task->motionType == MOVEL){
+//         target.intp = MP_MOVL_TYPE;
+//         // MovL(0, *task);
+//         // memcpy(&target.dst.coord, varInfo.val.p.data, sizeof(target.dst.coord));
+//         memcpy(target.dst.joint, varInfo.val.p.data, sizeof(target.dst.joint));
+// 	}
+// 	else
+// 	{
+// 		target.intp = MP_MOVJ_TYPE;
+//         // MovJ(0, *task);
+//         // memcpy(&target.dst.coord, varInfo.val.p.data, sizeof(target.dst.coord));
+//         memcpy(target.dst.joint, varInfo.val.p.data, sizeof(target.dst.joint));
+// 	}
+// 	// Copy the data to the target
+// 	//memcpy(&target.dst.coord, p, sizeof(target.dst.coord));
+// /* 	target.dst.joint[0] = pulse[0];
+// 	target.dst.joint[1] = pulse[1];
+// 	target.dst.joint[2] = pulse[2];
+// 	target.dst.joint[3] = pulse[3];
+// 	target.dst.joint[4] = pulse[4];
+// 	target.dst.joint[5] = pulse[5];
+// 	target.dst.joint[6] = 0;
+// 	target.dst.joint[7] = 0; */
+
+// 	// Setup the interpolation type
+// 	// if (task->motionType == MOVEL)
+// 	// {
+// 	// 	target.intp = MP_MOVL_TYPE;
+// 	// }
+// 	// else
+// 	// {
+// 	// 	target.intp = MP_MOVJ_TYPE;
+// 	// }
+// 	// Convert blend to um from mm
+// 	// Note task->Blend = -1 is used as "no blend", therefore this distinction.
+// 	const long Blend_um = task->blend > 0 ? task->blend * 1000 : 0;
+// 	// Speed for movement
+// 	const int Speed = update_speed(task->speed, task->motionType);
+// 	memset(&spd, 0, sizeof(spd));
+// 	if (task->motionType == MOVEL)
+// 	{
+// 		spd.v = Speed;
+// 		spd.vj = 100 * 100; //Max joint speed
+// 	}
+// 	else
+// 	{
+// 		// It is unclear whether the v values is used during MOVEJ
+// 		// We may have to change this later.
+// 		spd.v = 1500; //Max linar speed
+// 		spd.vj = Speed;
+// 	}
+
+// 	// initialize motion control with the first task.
+// 	if (task->taskIndex == 1)
+// 	{
+// 		if (mpMotStop(0) < 0)
+// 		{
+// 			return 0;
+// 		}
+// 		if (mpMotTargetClear(0x0f, 0) < 0)
+// 		{
+// 			return 0;
+// 		}
+// 	}
+
+// 	// Set Coordinate base system.
+// 	// if ((rc = mpMotSetCoord(grpNo, MP_PULSE_TYPE, 0)) < 0)
+// 	if ((rc = mpMotSetCoord(grpNo, MP_BASE_TYPE, 0)) < 0)
+// 	{
+// 		return 0;
+// 	}
+
+// 	if ((rc = mpMotSetOrigin(grpNo, MP_ABSO_VAL)) < 0)
+// 	{
+// 		return 0;
+// 	}
+
+// 	// Set the speed for the movement
+// 	if ((rc = mpMotSetSpeed(grpNo, &spd)) < 0)
+// 	{
+// 		return 0;
+// 	}
+
+// 	// // Set the Acceleration for the movement
+// 	// const long Acceleration = update_acc(task->acc) * 100;
+// 	// if ((rc = mpMotSetAccel(grpNo, Acceleration)) < 0)
+// 	// {
+// 	// 	return 0;
+// 	// }
+// 	// if ((rc = mpMotSetDecel(grpNo, Acceleration)) < 0)
+// 	// {
+// 	// 	return 0;
+// 	// }
+
+// 	// Set the joint Config for the movement
+// 	// if ((rc = mpMotSetConfig(grpNo, config)) < 0)
+// 	// {
+// 	// 	return 0;
+// 	// }
+
+// 	// Sets the value for blends
+// 	if ((rc = mpMotSetAccuracy(grpNo, Blend_um)) < 0)
+// 	{
+// 		return 0;
+// 	}
+
+// 	// Put the target in the queue
+// 	const int timeout = 10 / mpGetRtc();
+// 	int TargetSendRC = mpMotTargetSend((1 << grpNo), &target, timeout);
+// 	if (TargetSendRC < 0)
+// 	{
+// 		return 0;
+// 	}
+// 	return 1;
+// }
+
+// static int IsRobotPositionDifferenceLessThen(const long DifferenceAng, long pulse[])
+// {
+// 	MP_CTRL_GRP_SEND_DATA sPulsePosData;
+// 	MP_PULSE_POS_RSP_DATA rPulsePosData;
+// 	memset(&sPulsePosData, 0x00, sizeof(sPulsePosData));
+// 	memset(&rPulsePosData, 0x00, sizeof(rPulsePosData));
+// 	long rc = mpGetPulsePos(&sPulsePosData, &rPulsePosData);
+// 	if (rc < 0)
+// 	{
+// 		return 0;
+// 	}
+// 	long a0Diff = abs(rPulsePosData.lPos[0] - pulse[0]);
+// 	long a1Diff = abs(rPulsePosData.lPos[1] - pulse[1]);
+// 	long a2Diff = abs(rPulsePosData.lPos[2] - pulse[2]);
+// 	long a3Diff = abs(rPulsePosData.lPos[3] - pulse[3]);
+// 	long a4Diff = abs(rPulsePosData.lPos[4] - pulse[4]);
+// 	long a5Diff = abs(rPulsePosData.lPos[5] - pulse[5]);
+
+// 	if (DifferenceAng > a0Diff &&
+// 		DifferenceAng > a1Diff &&
+// 		DifferenceAng > a2Diff &&
+// 		DifferenceAng > a3Diff &&
+// 		DifferenceAng > a4Diff &&
+// 		DifferenceAng > a5Diff)
+// 	{
+// 		return 1;
+// 	}
+// 	else
+// 	{
+// 		return 0;
+// 	}
+// }
+
+/* static int MPRunScapeTask(ScapeTask tasks[],short nTotalNumberOfTasks){
+    const int Completed = 0;
+	if (tasks[0].job_id == JOB_GET_TCP_POSE || tasks[0].job_id == JOB_TEACH)
+	{
+		GetPose(tasks[0].target);
+		return Completed;
+	}
+	if (tasks[0].job_id == JOB_GET_JOINTS)
+	{
+		GetJoints(tasks[0].joints);
+		return Completed;
+	}
+
+    long pulse[SCAPE_ROBOT_AXIS_NUM + 2] = { };
+    int bStartMotionWasCalled = 0;
+	int grpNo = 0;
+	int rc = 0;
+    grpNo = mpCtrlGrpId2GrpNo(MP_R1_GID);
+    const int nTool = SCAPE_TOOL_INDEX;
+    rc = mpMotSetTool(grpNo, nTool);
+    int ntaskIndex = 0;
+	const int PollingTimeout = 5 / mpGetRtc();
+	int LastPathSegment = 0;
+    int StopCompletely = 0;
+    int motionAdded = 0;
+    int targetID = 0;
+	LONG nPlayStatusRet;
+	MP_PLAY_STATUS_RSP_DATA dxRet;
+	nPlayStatusRet = mpGetPlayStatus(&dxRet);
+    SHORT sHoldOld = dxRet.sHold;
+
+    while(1){
+        put_b_val(0,20);
+        if (get_b_val(20)==1) break;
+        t1_log("wait scp core loop");
+        waitSec(0.1);
+    }
+    for (ntaskIndex = 0; ntaskIndex < nTotalNumberOfTasks; ntaskIndex++){
+        ScapeTask* pCurrentTask = &(tasks[ntaskIndex]);
+        StopCompletely = 0;
+        if (pCurrentTask->blend <= 0) StopCompletely = 1;
+        if (pCurrentTask->motionValid){
+            targetID = pCurrentTask->taskIndex;
+            if (AddedTaskToBuffer(pCurrentTask, grpNo, pulse) == 0)
+            {
+                StopMotion(grpNo);
+            }
+            motionAdded = 1;
+        }
+        if (motionAdded && !bStartMotionWasCalled){
+            StartMotion(grpNo);
+            bStartMotionWasCalled = 1;
+        }
+        if ((StopCompletely || pCurrentTask->job_id > 0 || pCurrentTask->taskIndex == pCurrentTask->taskNumInTotal) && motionAdded){
+            const int TargetIDForPolling = targetID;
+            while(1){
+                const int ReturnCodeForPolling = mpMotTargetReceive(grpNo, TargetIDForPolling, NULL, PollingTimeout, 0);
+                if (ReturnCodeForPolling >= 0){
+                    break;
+                }
+                hold_T1_if_needed();
+                if (IsRobotPositionDifferenceLessThen(100,pulse)){
+                    break;
+                }
+            }
+            if (pCurrentTask->job_id == 9){
+                set_io(30244,1);
+                set_io(20245,0);
+            }
+            if (pCurrentTask->job_id == 10){
+                set_io(30244,0);
+                set_io(20245,1);
+            }
+            if (pCurrentTask->job_id == 11){
+                set_io(30244,1);
+                set_io(20245,0);
+            }
+            if (pCurrentTask->job_id == 12){
+                set_io(30244,0);
+                set_io(20245,1);
+            }
+        }
+    }
+    StopMotion(grpNo);
+    return Completed;
+} */
+
 static void create_robot(Robot* robot)
 {
     int i;
@@ -935,7 +1360,9 @@ static void create_robot(Robot* robot)
         robot->fnReceiveFromScape = receive_from_scape;
         robot->fnShowMsg = showMsgOnTP;
         robot->fnCleanMsg = cleanTPMsg;
+        robot->fnGetExeMode = getProgramExeMode;
         robot->fnRunScapeTask = runScapeTask;
+        // robot->fnMPRunScapeTask = MPRunScapeTask;
         robot->fnWaitScapeTaskComplete = wait_scape_task_complete;
         for(i = 0; i< 6; i++) robot->jGlobalBestConfig[i] = jGlobalCfg[i];
     }
@@ -1125,15 +1552,12 @@ void get_bin_id(int* current, int* next)
                 break;
             }           
         }
-        
     }
     *current = current_bin;
-
     next_bin = 255;
     if (current_bin >=0 && current_bin <= 3)
     {
        next_bin = get_next_bin(current_bin);
-
        if (bin_enable[next_bin] == 0 || next_bin == b16 || bin_ready[next_bin] == 0)
        {           
             for (i = 0; i < 4; i++)
@@ -1142,57 +1566,195 @@ void get_bin_id(int* current, int* next)
                 {
                     next_bin = i;
                     break;
-                }           
+                }
             }
        }        
     }
-    
     *next = next_bin;
 }
 
-// 次数添加获取抓取产品号的方法
+int is_conveyor_ready(const int id){
+    if (id == 1){
+        return get_io(20225);
+    }
+    if (id == 2){
+        return get_io(20226);
+    }
+    return 0;
+}
+
+int get_count(int fixture){
+    if(fixture == 1){
+        if(get_io(20221)){
+            int count1 = 0;
+            if(get_io(20227)) count1++;
+            if(get_io(20230)) count1++;
+            return count1;
+        }
+        
+    }
+    if(fixture == 2){
+        if(get_io(20222)){
+            int count2 = 0;
+            if(get_io(20231)) count2++;
+            if(get_io(20232)) count2++;
+            return count2;
+        }
+        
+    }
+    return 0;
+}
+
 int get_tp_bin_to_pick(){
-    // 通过get_io(IO 地址号码); 来读取IO状态，
-    // 根据IO状态来返回产品号，比如 DI1 和DI2 为产品1的两个上料信号，读取到任何一个则返回1
-    // DI2，DI3 为产品2 的两个上料信号，读取到任何一个返回2
-    // 否则返回255，表示没有任何可以抓取的产品？？？？
-    // 可以考虑 如果没有任何上料信号 则返回产品1（表示提前准备一个零件，拍照 + 识别 提前准备）这样下次上料信号亮起的时候可以直接抓取
-    // 提前备料需要考虑，所备的产品是否能马上被inform程序拿走，否则 需要人工干预重启程序！！
-    if(get_io(20221)){
+    if(get_io(20236)&&is_conveyor_ready(2)){
+        last_pick = 2;
+        return 2;
+    }
+    if(get_io(20237)&&is_conveyor_ready(1)){
+        last_pick = 1;
         return 1;
     }
-    if(get_io(20222)){
-        return 2;
+    if(last_result){//grip succeed
+        if(get_b_val(16)==0){//nothing in hand
+            if(get_count(1)||get_count(2)){//has fixture
+                if(get_count(1)==1&&is_conveyor_ready(1)){
+                    last_pick=1;
+                    return 1;
+                }
+                if(get_count(2)==1&&is_conveyor_ready(2)){
+                    last_pick=2;
+                    return 2;
+                }
+                if(get_count(1)==2&&is_conveyor_ready(1)){
+                    last_pick=1;
+                    return 1;
+                }
+                if(get_count(2)==2&&is_conveyor_ready(2)){
+                    last_pick=2;
+                    return 2;
+                }
+            }else{
+                if(last_pick==1&&is_conveyor_ready(2)){
+                    last_pick=2;
+                    return 2;
+                }
+                if(last_pick==2&&is_conveyor_ready(1)){
+                    last_pick=1;
+                    return 1;
+                }
+            }
+        }
+        if(get_b_val(16)==1){//part1 in hand
+            if(get_count(1)==1&&is_conveyor_ready(2)){
+                last_pick = 2;
+                return 2;
+            }
+            if(get_count(1)==2&&is_conveyor_ready(1)){
+                last_pick = 1;
+                return 1;
+            }
+            if(get_count(1)==0&&is_conveyor_ready(1)){
+                last_pick = 1;
+                return 1;
+            }
+        }
+        if(get_b_val(16) == 2){//part2 in hand
+            if(get_count(2)==1&&is_conveyor_ready(1)){
+                last_pick = 1;
+                return 1;
+            }
+            if(get_count(2)==2&&is_conveyor_ready(2)){
+                last_pick = 2;
+                return 2;
+            if(get_count(2)==0&&is_conveyor_ready(2)){
+                last_pick = 2;
+                return 2;
+            }
+            }
+        }
+    }else{//grip failed
+        if(last_pick==1){//last cycle pick part1
+            if(is_conveyor_ready(1)){
+                return 1;
+            }
+            if(get_count(2)&&is_conveyor_ready(2)){
+                last_pick=2;
+                return 2;
+            }
+        }
+        if(last_pick==2){//last cycle pick part2
+            if(is_conveyor_ready(2)){
+                return 2;
+            }
+            if(get_count(1)&&is_conveyor_ready(1)){
+                last_pick=1;
+                return 1;
+            }
+        }
     }
     return 255;
 }
 
-// 在此处添加移动传送带的方法
-void move_convyer(int product){
-    // 通过get_io(); 获取IO信号
-    // set_io(); 设置IO信号
+int conveyor_moved(int product){
     if(product == 1){
-        set_io(10231, 0);
-        set_io(10233, 1);
-        waitSec(2.0);
-        set_io(10233, 0);
-        while(1){
-            if(get_io(20225)) break;
-            waitSec(0.01);
-        }
-        set_io(10231, 1);
-    }
+        return get_io(20233);
+   }
     if(product == 2){
-        set_io(10232, 0);
-        set_io(10234, 1);
-        waitSec(2.0);
-        set_io(10234, 0);
-        while(1){
-            if(get_io(20226)) break;
-            waitSec(0.01);
-        }
-        set_io(10232, 1);
-    }
+        return get_io(20234);
+   }
+   return 0;
+}
+
+void reset_moved(int product){
+    if(product == 1){
+        set_io(10251, 1);
+        waitSec(0.5);
+        set_io(10251, 0);
+   }
+    if(product == 2){
+        set_io(10252, 1);
+        waitSec(0.5);
+        set_io(10252, 0);
+   }
+}
+
+void move_conveyor(int product){
+    if(product == 1){
+        set_io(10244, 1);
+        waitSec(0.5);
+        set_io(10244, 0);
+   }
+    if(product == 2){
+        set_io(10247, 1);
+        waitSec(0.5);
+        set_io(10247, 0);
+   }
+}
+
+void beforescan(int product){
+    if(product == 1){
+        set_io(10242, 1);
+        waitSec(0.5);
+        set_io(10242, 0);
+   }
+    if(product == 2){
+        set_io(10245, 1);
+        waitSec(0.5);
+        set_io(10245, 0);
+   }
+}
+
+void afterpick(int product){
+    if(product == 1){
+        set_io(10243, 1);
+        waitSec(0.5);
+        set_io(10243, 0);
+   }
+    if(product == 2){
+        set_io(10246, 1);
+        waitSec(0.5);
+        set_io(10246, 0);
+   }
 }
 
 void t1_main(int arg1, int arg2)
@@ -1219,7 +1781,6 @@ void t1_main(int arg1, int arg2)
 
     // get a scape interface
     if (init_robot(yrc,scp) != 0) end_task1();
-
     while(1)
     {   
         t1_log("t1 wait choice"); 
@@ -1245,103 +1806,50 @@ void t1_main(int arg1, int arg2)
             case START_HS_RECOG_50:
                 scp->scp_start_handling_station_recog(&bins[getProductId()]);
                 break;
-            case TUOPU_60:
-                scp->add(&bins[0]);
-                scp->add(&bins[1]);
-                cycle:
-                if(get_io(20194)){
-                    scp->puterr(&bins[0]);
-                }
-                if(get_io(20221) && get_b_val(31)==2){
-                    scp->place(&bins[0]);
-                }
-                if(get_io(20222) && get_b_val(41)==2){
-                    scp->place(&bins[1]);
-                }
-                if(get_io(20221) && get_b_val(31)==0){
-                    scp->add(&bins[0]);
-                    scp->place(&bins[0]);
-                }
-                if(get_io(20222) && get_b_val(41)==0){
-                    scp->add(&bins[1]);
-                    scp->place(&bins[1]);
-                }
-                if(!get_io(20221) && !get_io(20222) && get_b_val(31)==0 && get_b_val(41)==0){
-                    if(get_io(20201) || get_io(20200)){
-                        scp->add(&bins[0]);
-                        if(get_io(20221)){
-                            goto cycle;
-                        }
-                    }
-                    if(get_io(20202)){
-                        scp->add(&bins[1]);
-                    }
-                }
-                if(!get_io(20221) && !get_io(20222) && get_b_val(31)==0){
-                    scp->add(&bins[0]);
-                }
-                if(!get_io(20221) && !get_io(20222) && get_b_val(41)==0){
-                    scp->add(&bins[1]);
-                }
-                goto cycle;
-                break;
-            case 120: // for Tuo Pu project
+            case 120: // TUOPU
+                put_b_val(0, 15);
+                put_b_val(0, 16);
+                put_b_val(0, 25);
+                put_b_val(0, 26);
+                put_b_val(0, 51);
+                put_b_val(0, 52);
+                robot_current_working = 555;
                 while(get_b_val(61) != 1){
-                    // 获取需要抓取的箱子号
                     product_id = get_tp_bin_to_pick();
+                    put_b_val(product_id, 15);//tell inform next bin
                     if (product_id == 1 || product_id == 2){
-                        // 当前有抓料需求
-                        // 根据需要触发3D相机扫描 触发扫描前考虑机器人遮挡 增加延迟，现添加3秒。
-                        // 获取B016 变量，代表机器人 inform程序正在处理的产品号
-                        // 若inform程序和motoplus程序正在处理相同的产品，为了避免机器人遮挡需要添加延迟
-                        // 告知 inform 程序 当前motoplus 正在处理的产品号
-                        put_b_val(product_id, 15);
-                        if (get_b_val(16)){ 
-                            waitSec(5);
+                        put_b_val(1, 25);//tell inform start next cycle
+                        short forcescan;
+                        forcescan = conveyor_moved(product_id);//conveyor moved and force scan
+                        if(forcescan) reset_moved(product_id);//reset conveyor moved signal
+                        beforescan(product_id);//lock conveyor
+                        if (get_b_val(16)){
+                            waitSec(1);//scan delay
                         }
-                        scp->scp_start_scan(&bins[product_id-1]);
-                        /// 开始抓取，选用默认配置 即首先考虑从箱子抓取一个产品放置到 中转台，
-                        /// 中转台需设置两个分区
-                        /// 在中转台上放置完一个零件后会自动补第二个零件，
-                        /// 补第二个零件后，二次抓取第一个零件 然后流程结束
-                        set_return_val(scp->scp_pick(&bins[product_id-1],0,0));
-                        put_b_val(0, 15);
-                        /// 结果小于0 即箱子无可继续抓取产品，需要移动传送带
-                        if (get_i_val(65) < 0){
-                            // 在此处发送信号，操控传送带，并等待传送带操作完成。
-                            /// 根据传入的参数 product_id 来选择移动哪一条传送带
-                            move_convyer(product_id);
+                        result = scp->TPPick(&bins[product_id-1], forcescan);//pick prepare
+                        put_b_val(0, 15);//reset current bin
+                        while (1)//wait tp core
+                        {
+                            if(get_b_val(26)){
+                                put_b_val(0, 26);
+                                break;
+                            }
+                            waitSec(0.01);
                         }
-                    }
-                    else{ // 无抓料需求，告知inform 程序 B105 为255，代表motoplus程序没有找到可以抓取的产品
-                        put_b_val(255, 15);
+                        
+                        if(result<0){//bin empty
+                            last_result = 0;
+                            move_conveyor(product_id);
+                        }
+                        else{//pick succeed
+                            last_result = 1;
+                            afterpick(product_id);
+                        }
                     }
                     t1_log("120 loop...");
                     hold_T1_if_needed();
                 }
                 break;
-            case 70:
-                robot_current_working = ROBOT_IN_BIN_PICKING;
-                scp->scp_pick_3D(&bins[getProductId()]);
-                set_bin_height(bins[product_id].remain_parts_height_mm);
-                break;
-            case 80:
-                scp->scp_place_on_handling_station(&bins[getProductId()]);
-                break;
-            case 90:
-                scp->scp_regrip_at_handling_station(&bins[getProductId()]);
-                break;
-            case 100:
-                scp->scp_check_oc_result(&bins[getProductId()]);
-                break;
-            case 101:
-                scp->scp_scan_3D(&bins[getProductId()]);
-                break;
-            case 102:
-                scp->scp_scan_2D(&bins[getProductId()]);
-                break;
-            case 111:
-                get_io_test();
             default:
                 break;
         }

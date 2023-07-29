@@ -1,4 +1,23 @@
-﻿// this task is the entrance of motoplus application
+﻿/* 
+2022-05-31
+update bin left parts height - I66
+2022-11-19
+修正了一个bug,getUserChoice, 只有当读取到的选择不为0时候，在获取完用户选择时才会重置选择为0 否则有可能
+在mp程序刚读完选择，而且此时选择为0，恰好在这时候，TP发送过来新的选择，然而此时的选择已经被mp程序重置为0（0即为空选择）
+所以会导致mp程序无法收到用户选择，然而TP程序也会在core中循环等待任务，mp程序也会一直循环等待用户选择，导致程序无法正常工作。
+2022-12-01
+新松更新了立库，所以80站4个供料位置换箱操作均不影响剩余箱子的抓取，所以做出相应更新，提高换箱的效率
+2023-02-09
+scapeBase.c 更新，stopshowmsg 函数，如果输出的errorcode 余100 等于20 表示相机断开连结，将设置一个输出信号
+2023-05-08
+t1.c 更新，解决在切换一轮抓取时候等待的问题， 由于PLC无法及时给出下一轮需要抓取的零件，因此在out程序中主动的默认开始扫描下一轮的第一个零件
+在住循环 case 110: // lear 80 GP25 improve cycle time中
+当搜索不到需要提前扫描的箱子时候，默认开始扫描下一轮的第一个零件修改代码如下：
+	// Set B015 255
+	put_b_val(255, 15);
+	scp->scp_start_scan(&bins[0]);
+*/
+// this task is the entrance of motoplus application
 // this task manage T1 start, resume etc
 #include "T.h"
 #define T1_RESET_B_99 99
@@ -23,7 +42,7 @@ static int SetApplicationInfo(void)
 	memset(&rData, 0x00, sizeof(rData));
 
 	strncpy(sData.AppName,  "scape bin-picking",  MP_MAX_APP_NAME);
-	strncpy(sData.Version,  "2023.03.15",         MP_MAX_APP_VERSION);
+	strncpy(sData.Version,  "2023.07.08",         MP_MAX_APP_VERSION);
 	strncpy(sData.Comment,  "SCAPE - YRC1000 V3", MP_MAX_APP_COMMENT);
 
 	rc = mpApplicationInfoNotify(&sData, &rData);

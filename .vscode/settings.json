@@ -21,6 +21,7 @@
     "limits.h": "c",
     "GET_POS.C": "cpp"
     },
-    "C_Cpp.intelliSenseEngineFallback": "disabled"
+    "C_Cpp.intelliSenseEngineFallback": "enabled",
+    "C_Cpp.errorSquiggles": "enabled"
    }
    
