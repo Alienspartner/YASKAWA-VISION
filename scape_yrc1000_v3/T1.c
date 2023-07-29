@@ -1606,7 +1606,7 @@ int get_count(int fixture){
 }
 
 int get_tp_bin_to_pick(){
-    if(get_io(20236)&&is_conveyor_ready(2)){
+    /*if(get_io(20236)&&is_conveyor_ready(2)){
         last_pick = 2;
         return 2;
     }
@@ -1691,8 +1691,13 @@ int get_tp_bin_to_pick(){
                 return 1;
             }
         }
+    }*/
+    if(is_conveyor_ready(1)){
+        return 1;
     }
-    return 255;
+    else{
+        return 255;
+    }
 }
 
 int conveyor_moved(int product){
