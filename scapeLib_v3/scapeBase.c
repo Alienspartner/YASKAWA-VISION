@@ -7,7 +7,7 @@
     update bin left parts height - I66
 2022-07-04
   update 1:
-    to improve the cycle time, add option 60 Lear specific option
+    to improve the cycle time, add option 60 Lear specifice option
     automatically scan the next bin at the moment the current bin-picking returns
     to aviod the robot block the scanner view, the choosen next bin normally need to keep away from current
   update 2:
@@ -149,26 +149,6 @@ static char get_b_val(unsigned short idx)
     rc1 = mpGetUserVars(&varInfo1);
 
     return varInfo1.val.b;
-}
-
-void waitTime(float sec)
-{
-    mpTaskDelay((int)(1000 * sec/mpGetRtc()));
-}
-
-void set_b_val(unsigned short var,unsigned char idx)
-{
-    MP_USR_VAR_INFO varInfo;
-    
-    memset(&varInfo, 0, sizeof(varInfo));
-    varInfo.var_type = MP_VAR_B;
-    varInfo.var_no = idx;
-    varInfo.val.b = var;
-    while(true)
-    {
-        if(mpPutUserVars(&varInfo) == 0) break;
-        waitTime(0.01);
-    }
 }
 
 static char *itos(int i, char *const sVar)
@@ -2233,8 +2213,8 @@ static void update_io(void)
     char cmd[BUFF_LEN] = "SET GripSensor1_VALUE %d GripSensor2_VALUE %d GripSensor3_VALUE %d;";
 
     getVal("GET RingLight_LIGHT_RING_ON PatternProjector_LIGHT_PATTERN_PROJECTOR_ON;");
-    /*run_job(JOB_LIGHT_ON, tempData[0], 0, 0);
-    run_job(JOB_PATTERN_ON, tempData[1], 0, 0);*/
+    run_job(JOB_LIGHT_ON, tempData[0], 0, 0);
+    run_job(JOB_PATTERN_ON, tempData[1], 0, 0);
     run_job(JOB_CHECK_GRIP, 0, 0, 0);
     setVal(getStr(cmd, 3, tasks[0].user_task.par0, tasks[0].user_task.par1, tasks[0].user_task.par2));
 
@@ -2425,7 +2405,7 @@ static void reset_product_data(Scp_Product *product)
     product->oc_recog_started = false;
     product->oc_part_was_picked = false;
     product->height_is_initialized = false;
-    product->bp_acq_needed = false;
+    product->bp_acq_needed = true;
     product->bp_calib_needed = false;
     product->use_oc = false;
     product->use_bp = false;
@@ -2439,9 +2419,11 @@ static void perform_height_init(Scp_Product *product, unsigned int start_height)
 {
     int result = 0;
 
-    request_robot_pose(atBin);
+    if (product->bp_use_tool_sensor)
+        request_robot_pose(atBin);
     if (product->use_bp == false)
         return;
+    product->bp_acq_needed = true;
     if (start_height <= 0)
     {
         // perform height initialization
@@ -2756,6 +2738,10 @@ static void oc_two_zones_stat_cam(Scp_Product *product, short *back_to_bp)
             *back_to_bp = true;
     }
 
+    if (product->parts_on_hs < 2){
+        *back_to_bp = true;
+    }
+    
     // This way of starting recogntion requires that we
     // always have "motion detection" enabled.
     if (product->parts_on_hs > 0)
@@ -2856,9 +2842,7 @@ static void pick_object(Scp_Product *product, Bin *bin)
     short wait_for_img_acq_to_comp = true;
     int result = 0, viaLowFrame;
     double viaLow[6];
-    int tryTimes = 0;
 
-    PICK_BEGIN:
     request_robot_pose(atBin);
     bin->bin_status = 0;
     if (product->use_bp == false)
@@ -2884,8 +2868,8 @@ static void pick_object(Scp_Product *product, Bin *bin)
         break;
     case 2: // No objects found
         product->bin_is_empty = true;
-        bin->bin_status = RC_BIN_FINISH;
         product->height_is_initialized = false;
+        bin->bin_status = RC_BIN_FINISH;
         break;
     case 3: // Height initialization has not been performed
         stopAndShowCodeMsg(2003);
@@ -2896,6 +2880,7 @@ static void pick_object(Scp_Product *product, Bin *bin)
     case 5: // Layer is empty
         product->layer_done = true;
         bin->bin_status = RC_LAYER_FINISH;
+        //product->height_is_initialized = false;
     case 9:
         // Loaded product does not contain a bin-picking Session.
         stopAndShowCodeMsg(2009);
@@ -2919,20 +2904,22 @@ static void pick_object(Scp_Product *product, Bin *bin)
         stopAndShowCodeMsg(2024);
         break;
     case 30:  // No more PICKABLE parts in BIN, but at least one recognized part
+    	product->bin_is_empty = true;
         bin->bin_status = RC_UNPICKABLE_PART_IN_BIN;
-        product->bin_is_empty = true;
         product->height_is_initialized = false;
         break;
     case 31:  // No more PICKABLE parts in LAYER, but at least one recognized part
         bin->bin_status = RC_UNPICKABLE_PART_IN_LAYER;
+        //product->height_is_initialized = false;
         break;
     case 32:  // No recognized parts in BIN, but SOMETHING was left in bin
+    	product->bin_is_empty = true;
         bin->bin_status = RC_SOMETHING_IN_BIN;
-        product->bin_is_empty = true;
         product->height_is_initialized = false;
         break;
     case 33:  // No recognized parts in LAYER, but SOMETHING was left in Layer
         bin->bin_status = RC_SOMETHING_IN_LAYER;
+        //product->height_is_initialized = false;
         break;    
     default:
         // Unsupported return code
@@ -3474,7 +3461,7 @@ static int scape_pick(Bin *bin, short rescan, PickCfg pickCfg)
         if (bin->bin_status < 0)
             update_bin(&product_data[current_pd_idx], bin);
         height_init_if_needed(&product_data[current_pd_idx], bin->start_height_mm);
-        if (rescan && product_data[current_pd_idx].bp_acq_needed == false)
+        if (rescan)
         {
             acquire_bin_data(&product_data[current_pd_idx], true);
         }
@@ -3541,8 +3528,9 @@ static int scape_pick(Bin *bin, short rescan, PickCfg pickCfg)
 
 static int scape_start_scan(Bin* bin)
 {
-    if (bin->bin_status < 0) return 0;
-    acquire_bin_data(&product_data[bin->product_id - 1], false);
+    //if (bin->bin_status < 0) return 0;
+    height_init_if_needed(&product_data[bin->product_id - 1], bin->start_height_mm);
+    acquire_bin_data(&product_data[bin->product_id - 1], product_data[bin->product_id - 1].bp_acq_needed);
     return 0;
 }
 
@@ -3597,10 +3585,10 @@ static void scape_pick_3D(Bin* bin){
     }
     pick_object(&product_data[bin->product_id-1], bin);
     if (product_data[bin->product_id-1].bin_is_empty == true){
-        set_b_val(1, 90);
+        put_b_val(1, 90);
     }
     else{
-        set_b_val(0, 90);
+        put_b_val(0, 90);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
 }
@@ -3608,10 +3596,10 @@ static void scape_pick_3D(Bin* bin){
 static void scape_place_on_hs(Bin* bin){
     place_part_on_hs(&product_data[bin->product_id-1], false);
     if (product_data[bin->product_id-1].part_placed_on_hs == false){
-        set_b_val(1, 91);
+        put_b_val(1, 91);
     }
     else{
-        set_b_val(0, 91);
+        put_b_val(0, 91);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
 }
@@ -3619,10 +3607,10 @@ static void scape_place_on_hs(Bin* bin){
 static void scape_regrip_at_hs(Bin* bin){
     perform_regrip_at_hs(&product_data[bin->product_id-1]);
     if (product_data[bin->product_id-1].oc_part_was_picked == false){
-        set_b_val(1, 92);
+        put_b_val(1, 92);
     }
     else{
-        set_b_val(0, 92);
+        put_b_val(0, 92);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
 }
@@ -3630,10 +3618,10 @@ static void scape_regrip_at_hs(Bin* bin){
 static void scape_check_oc_result(Bin* bin){
     check_oc_recognition_result(&product_data[bin->product_id-1]);
     if (product_data[bin->product_id-1].oc_recog_success == false){
-        set_b_val(1, 93);
+        put_b_val(1, 93);
     }
     else{
-        set_b_val(0, 93);
+        put_b_val(0, 93);
     }
     run_job(JOB_EXIT, bin->bin_status, bin->remain_parts_height_mm, 0);
 }
@@ -3685,7 +3673,9 @@ static void place(Bin *bin){
     int ng = 0;
     first:
     check_oc_recognition_result(&product_data[bin->product_id-1]);
+    put_b_val(bin->product_id, 81);
     run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
+    put_b_val(0, 81);
     perform_regrip_at_hs(&product_data[bin->product_id-1]);
     if(product_data[bin->product_id-1].oc_part_was_picked == false){
         run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
@@ -3696,14 +3686,18 @@ static void place(Bin *bin){
     start_oc_recognition(&product_data[bin->product_id - 1], false);
     second:
     check_oc_recognition_result(&product_data[bin->product_id-1]);
+    put_b_val(bin->product_id, 81);
     run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
+    put_b_val(0, 81);
     perform_regrip_at_hs(&product_data[bin->product_id-1]);
     if(product_data[bin->product_id-1].oc_part_was_picked == false){
         ng = 1;
         run_job(JOB_EMPTY_HS, bin->product_group_id, bin->product_id, 0);
         pick(bin);
         place_part_on_hs(&product_data[bin->product_id-1], false);
+        put_b_val(bin->product_id, 81);
         run_job(JOB_MOVE_CLEAR_HS, bin->product_group_id, bin->product_id, 0);
+        put_b_val(0, 81);
         start_oc_recognition(&product_data[bin->product_id - 1], false);
         goto second;
     }

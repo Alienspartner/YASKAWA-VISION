@@ -51,8 +51,6 @@ _dbg_SCAPE_ = 9 all
 #define JOB_CHECK_GRIP 210
 #define JOB_EXIT 255
 
-#define JOB_MOVE
-
 // 'RC_' scape pick return value
 #define RC_BIN_FINISH -1
 #define RC_LAYER_FINISH -2

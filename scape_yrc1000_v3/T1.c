@@ -47,7 +47,7 @@ scapeBase.c 更新，stopshowmsg 函数，如果输出的errorcode 余100 等于
 #define ROBOT_IN_BIN_PICKING 1
 
 
-typedef enum {CALIBRATION_10 = 10,BP_INITIALIZE_20 = 20, SCAPE_PICK_30 = 30, START_BIN_SCAN_40 = 40,START_HS_RECOG_50 = 50,TUOPU = 60}Choice;
+typedef enum {CALIBRATION_10 = 10,BP_INITIALIZE_20 = 20, SCAPE_PICK_30 = 30, START_BIN_SCAN_40 = 40,START_HS_RECOG_50 = 50,TUOPU_60 = 60}Choice;
 typedef struct _YRC_TASK
 {
     // general
@@ -1172,32 +1172,33 @@ void move_convyer(int product){
     // 通过get_io(); 获取IO信号
     // set_io(); 设置IO信号
     if(product == 1){
-        set_io(30261, 0);
-        set_io(30263, 1);
+        set_io(10231, 0);
+        set_io(10233, 1);
         waitSec(2.0);
-        set_io(30263, 0);
+        set_io(10233, 0);
         while(1){
             if(get_io(20225)) break;
             waitSec(0.01);
         }
-        set_io(30261, 1);
+        set_io(10231, 1);
     }
     if(product == 2){
-        set_io(30262, 0);
-        set_io(30264, 1);
+        set_io(10232, 0);
+        set_io(10234, 1);
         waitSec(2.0);
-        set_io(30264, 0);
+        set_io(10234, 0);
         while(1){
             if(get_io(20226)) break;
             waitSec(0.01);
         }
-        set_io(30262, 1);
+        set_io(10232, 1);
     }
 }
 
 void t1_main(int arg1, int arg2)
 {    
     int product_id = 0;
+    int result = 0;
     int bin_id = 0, next_bin = 0;
     T1_STATUS = T1_RUNNING;
     
@@ -1244,7 +1245,7 @@ void t1_main(int arg1, int arg2)
             case START_HS_RECOG_50:
                 scp->scp_start_handling_station_recog(&bins[getProductId()]);
                 break;
-            case TUOPU:
+            case TUOPU_60:
                 scp->add(&bins[0]);
                 scp->add(&bins[1]);
                 cycle:
@@ -1288,23 +1289,25 @@ void t1_main(int arg1, int arg2)
                 while(get_b_val(61) != 1){
                     // 获取需要抓取的箱子号
                     product_id = get_tp_bin_to_pick();
-                    if (product_id == 1 || product_id == 2){ // 当前有抓料需求
+                    if (product_id == 1 || product_id == 2){
+                        // 当前有抓料需求
                         // 根据需要触发3D相机扫描 触发扫描前考虑机器人遮挡 增加延迟，现添加3秒。
                         // 获取B016 变量，代表机器人 inform程序正在处理的产品号
                         // 若inform程序和motoplus程序正在处理相同的产品，为了避免机器人遮挡需要添加延迟
                         // 告知 inform 程序 当前motoplus 正在处理的产品号
                         put_b_val(product_id, 15);
-                        if (get_b_val(16) == product_id){ 
-                            waitSec(3);
+                        if (get_b_val(16)){ 
+                            waitSec(5);
                         }
                         scp->scp_start_scan(&bins[product_id-1]);
                         /// 开始抓取，选用默认配置 即首先考虑从箱子抓取一个产品放置到 中转台，
                         /// 中转台需设置两个分区
                         /// 在中转台上放置完一个零件后会自动补第二个零件，
                         /// 补第二个零件后，二次抓取第一个零件 然后流程结束
-                        int result =  scp->scp_pick(&bins[product_id-1],0,0);
+                        set_return_val(scp->scp_pick(&bins[product_id-1],0,0));
+                        put_b_val(0, 15);
                         /// 结果小于0 即箱子无可继续抓取产品，需要移动传送带
-                        if (result < 0){
+                        if (get_i_val(65) < 0){
                             // 在此处发送信号，操控传送带，并等待传送带操作完成。
                             /// 根据传入的参数 product_id 来选择移动哪一条传送带
                             move_convyer(product_id);
