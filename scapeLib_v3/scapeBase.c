@@ -3842,11 +3842,13 @@ int tp_pick(Bin *bin, short forcescan){
         return rc;
     }
     if (check_result == OC_HAS_PART_TO_PICK){
+        run_job(226,current_product->product_group_id, current_product->product_id, 0);
         place_part_on_hs(current_product,false);
         perform_regrip_at_hs(current_product);
     }
     else {
         PLACE:
+        run_job(226,current_product->product_group_id, current_product->product_id, 0);
         place_part_on_hs(current_product,false);
         start_oc_recognition(current_product, false);
         pick_object(current_product,bin);
@@ -3861,6 +3863,7 @@ int tp_pick(Bin *bin, short forcescan){
         }
         check_result = tp_check_oc_result(current_product);
         if (check_result == OC_HAS_PART_TO_PICK){
+            run_job(226,current_product->product_group_id, current_product->product_id, 0);
             place_part_on_hs(current_product,false);
             perform_regrip_at_hs(current_product);
         }
