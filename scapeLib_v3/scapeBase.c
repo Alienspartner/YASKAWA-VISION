@@ -3816,7 +3816,7 @@ static void put_i_val(int var,unsigned short idx)
         waitSec(0.01);
     }
 }
-int tp_pick(Bin *bin, short forcescan){
+int tp_pick(Bin *bin, short forcescan, int *delay){
     Scape_Task_Internal t_pick_place[15];
     Scape_Task_Internal t_regrip[10];
     ScapeTask t_robot[30];
@@ -3833,6 +3833,7 @@ int tp_pick(Bin *bin, short forcescan){
     }
     pick_object(current_product,bin);
     if (current_product->bin_is_empty){
+        *delay = 1;
         rc = CHANGE_BIN;
         put_i_val(rc, 65);
         current_product->grip_family_id = rc;
@@ -3853,6 +3854,7 @@ int tp_pick(Bin *bin, short forcescan){
         start_oc_recognition(current_product, false);
         pick_object(current_product,bin);
         if (current_product->bin_is_empty){
+            *delay = 3;
             rc = CHANGE_BIN;
             put_i_val(rc, 65);
             current_product->grip_family_id = rc;
@@ -3872,6 +3874,7 @@ int tp_pick(Bin *bin, short forcescan){
             goto PLACE;
         }
     }
+    *delay = 1;
     put_i_val(current_product->grip_family_id, 65);
     ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
     scapeRobot->fnRunScapeTask(&finalTask);
