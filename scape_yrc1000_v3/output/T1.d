@@ -1,4 +1,4 @@
-C:\Users\Liu18\Desktop\MotoPlus\ -\ TP\scape_yrc1000_v3\output\T1.a:  \
+C:\Users\Liu18\Desktop\git\YASKAWA-VISION\scape_yrc1000_v3\output\T1.a:  \
  C:\Users\Liu18\AppData\Local\MotoPlusIDE_YRC\ 0\T1.c \
   C:\Users\Liu18\AppData\Local\MotoPlusIDE_YRC\ 0\/T.h \
   C:\MotoPlusIDE_YRC\mpbuilder\inc/motoPlus.h \
