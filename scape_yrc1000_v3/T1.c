@@ -78,6 +78,7 @@ extern int T2_ID;
 int current_task_idx = 0, current_tasks_num = 0;
 int last_pick = 0;
 int last_result = 1;
+int delay = 1;
 
 static void waitSec(float sec)
 {
@@ -1824,9 +1825,9 @@ void t1_main(int arg1, int arg2)
                         if(forcescan) reset_moved(product_id);//reset conveyor moved signal
                         beforescan(product_id);//lock conveyor
                         if (get_b_val(16)){
-                            waitSec(1);//scan delay
+                            waitSec(delay);//scan delay
                         }
-                        result = scp->TPPick(&bins[product_id-1], forcescan);//pick prepare
+                        result = scp->TPPick(&bins[product_id-1], forcescan, &delay);//pick prepare
                         put_b_val(0, 15);//reset current bin
                         while (1)//wait tp core
                         {
