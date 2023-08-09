@@ -3816,12 +3816,13 @@ static void put_i_val(int var,unsigned short idx)
         waitSec(0.01);
     }
 }
-int tp_pick(Bin *bin, short forcescan, int *delay){
+int tp_pick(Bin *bin, short forcescan){
     Scape_Task_Internal t_pick_place[15];
     Scape_Task_Internal t_regrip[10];
     ScapeTask t_robot[30];
     short t_len_pick_place=0, t_len_regrip = 0,t_len_robot=0;
     Scp_Product* current_product = NULL;
+    BOOL needscan = false;
     int check_result = 0 ,rc = 0,i=0;
     if (bin == NULL) return -10000;
     current_product = &product_data[bin->product_id - 1];
@@ -3833,7 +3834,6 @@ int tp_pick(Bin *bin, short forcescan, int *delay){
     }
     pick_object(current_product,bin);
     if (current_product->bin_is_empty){
-        *delay = 1;
         rc = CHANGE_BIN;
         put_i_val(rc, 65);
         current_product->grip_family_id = rc;
@@ -3854,9 +3854,12 @@ int tp_pick(Bin *bin, short forcescan, int *delay){
         place_part_on_hs(current_product,false);
         run_job(226,current_product->product_group_id, current_product->product_id, 0);
         start_oc_recognition(current_product, false);
+        if(needscan){
+            run_job(227,current_product->product_group_id, current_product->product_id, 0);
+            needscan = false;
+        }
         pick_object(current_product,bin);
         if (current_product->bin_is_empty){
-            *delay = 3;
             rc = CHANGE_BIN;
             put_i_val(rc, 65);
             current_product->grip_family_id = rc;
@@ -3874,10 +3877,10 @@ int tp_pick(Bin *bin, short forcescan, int *delay){
         }
         else{
             tp_clear_and_empty_hs(current_product);
+            needscan = true;
             goto PLACE;
         }
     }
-    *delay = 1;
     put_i_val(current_product->grip_family_id, 65);
     ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
     scapeRobot->fnRunScapeTask(&finalTask);
