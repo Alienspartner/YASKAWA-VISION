@@ -172,7 +172,7 @@ typedef struct Scp
     // start handling station recognition, valid only stationary camera was used.
     int (*scp_start_handling_station_recog)(Bin* bin);
 
-    int (*TPPick)(Bin*, short forcescan, int *delay);
+    int (*TPPick)(Bin*, short forcescan);
     
 }IScp;
 
