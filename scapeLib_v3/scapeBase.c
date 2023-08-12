@@ -3866,6 +3866,7 @@ int tp_pick(Bin *bin, short forcescan){
             if (!current_product->oc_recog_started && current_product->parts_on_hs > 0) start_oc_recognition(current_product, false);
             return rc;
         }
+        run_job(226,current_product->product_group_id, current_product->product_id, 0);
         check_result = tp_check_oc_result(current_product);
         if (check_result == OC_HAS_PART_TO_PICK){
             run_job(226,current_product->product_group_id, current_product->product_id, 0);
