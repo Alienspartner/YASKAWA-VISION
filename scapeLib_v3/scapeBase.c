@@ -2020,20 +2020,28 @@ static Scape_Task_Internal get_task(short taskType, short *taskLeft, short read_
         task.user_task.taskNumInTotal = read_task_counter + 1 + *taskLeft;
 
         task.user_task.stateWaitMotionStart = (short)tempData[16];
-        if (tempData[15] /* use global config*/)
-        {
-            for (i = 0; i < 6; i++)
-                task.user_task.joints[i] = scapeRobot->jGlobalBestConfig[i];
-        }
-        if (tempData[17] /* use joints value*/ && tempData[15] == 0 /* use global best config*/)
-        {
-            task.user_task.joints[0] = tempData[18] / 100.0;
-            task.user_task.joints[1] = tempData[19] / 100.0;
-            task.user_task.joints[2] = tempData[20] / 100.0;
-            task.user_task.joints[3] = tempData[21] / 100.0;
-            task.user_task.joints[4] = tempData[22] / 100.0;
-            task.user_task.joints[5] = tempData[23] / 100.0;
-        }
+        /*
+            if (tempData[15] )
+            {
+                for (i = 0; i < 6; i++)
+                    task.user_task.joints[i] = scapeRobot->jGlobalBestConfig[i];
+            }
+            if (tempData[17]  && tempData[15] == 0)
+            {
+                task.user_task.joints[0] = tempData[18] / 100.0;
+                task.user_task.joints[1] = tempData[19] / 100.0;
+                task.user_task.joints[2] = tempData[20] / 100.0;
+                task.user_task.joints[3] = tempData[21] / 100.0;
+                task.user_task.joints[4] = tempData[22] / 100.0;
+                task.user_task.joints[5] = tempData[23] / 100.0;
+            }
+        */
+        task.user_task.joints[0] = tempData[18] / 100.0;
+        task.user_task.joints[1] = tempData[19] / 100.0;
+        task.user_task.joints[2] = tempData[20] / 100.0;
+        task.user_task.joints[3] = tempData[21] / 100.0;
+        task.user_task.joints[4] = tempData[22] / 100.0;
+        task.user_task.joints[5] = tempData[23] / 100.0;
         task.targetType = tempData[26];
         break;
     case 1:
@@ -3845,12 +3853,14 @@ int tp_pick(Bin *bin, short forcescan){
     if (check_result == OC_HAS_PART_TO_PICK){
         run_job(226,current_product->product_group_id, current_product->product_id, 0);
         place_part_on_hs(current_product,false);
+        run_job(226,current_product->product_group_id, current_product->product_id, 0);
         perform_regrip_at_hs(current_product);
     }
     else {
         PLACE:
         run_job(226,current_product->product_group_id, current_product->product_id, 0);
         place_part_on_hs(current_product,false);
+        run_job(226,current_product->product_group_id, current_product->product_id, 0);
         start_oc_recognition(current_product, false);
         if(needscan){
             run_job(227,current_product->product_group_id, current_product->product_id, 0);
@@ -3871,6 +3881,7 @@ int tp_pick(Bin *bin, short forcescan){
         if (check_result == OC_HAS_PART_TO_PICK){
             run_job(226,current_product->product_group_id, current_product->product_id, 0);
             place_part_on_hs(current_product,false);
+            run_job(226,current_product->product_group_id, current_product->product_id, 0);
             perform_regrip_at_hs(current_product);
         }
         else{

@@ -742,14 +742,29 @@ static void MovJ(unsigned int idx,ScapeTask task)
 
     if(DBG_YRC) printf("\nrob: joints j1 %lf,j2 %lf,j3 %lf,j4 %lf,j5 %lf,j6 %lf\n", task.joints[0], task.joints[1], task.joints[2], task.joints[3], task.joints[4], task.joints[5]);
     // time to put motion data to registor
-    if (task.target == NULL)
+    // if (task.target == NULL)
+    // {
+    //     if (task.joints == NULL) stopAndShowErrMsg("MovJ pose and joints both are NULL!!");
+    //     // move to joints directly
+    //     if(DBG_YRC) puts("\n rob: MovJ move to joints directly\n");
+    //     angleToPulse(task.joints, pulse);
+    //     put_j_val(pulse, yrc_task[idx].p_pose_idx);
+    //     stopAndShowErrMsg("task.target == NULL");
+    // }
+    // else
+    // {
+    //     for (i = 0; i < 6; i++) pose[i] = task.target[i];
+    //     if(DBG_YRC) printf("\nrob: poseTarget x %lf,y %lf,z %lf,a %lf,b %lf,c %lf\n", task.target[0], task.target[1], task.target[2], task.target[3], task.target[4], task.target[5]);
+    //     if (task.joints == NULL) stopAndShowErrMsg("MovJ joints is NULL!!");;
+    //     // calculate the configuration
+    //     calculate_best_config(task.target,task.joints, &config);
+    //     poseToMotman(pose, p);
+    //     put_p_val(p, config, yrc_task[idx].p_pose_idx);
+    // }
+    if (robot_current_working == 555 || get_i_val(22) == 555)
     {
-        if (task.joints == NULL) stopAndShowErrMsg("MovJ pose and joints both are NULL!!");
-        // move to joints directly
-        if(DBG_YRC) puts("\n rob: MovJ move to joints directly\n");
         angleToPulse(task.joints, pulse);
         put_j_val(pulse, yrc_task[idx].p_pose_idx);
-        stopAndShowErrMsg("task.target == NULL");
     }
     else
     {
@@ -777,25 +792,29 @@ static void MovL(unsigned int idx,ScapeTask task)
     long p[6] = {0};
     double pose[6] = {};
     int i = 0;
+    long pulse[SCAPE_ROBOT_AXIS_NUM + 2]= {};
     unsigned int config = MP_FIG_SIDE;
+    long pluse[SCAPE_ROBOT_AXIS_NUM+3]={};
     
     // time to put motion data to registor
     for (i = 0; i < 6; i++) pose[i] = task.target[i];
     poseToMotman(pose, p);
 
-    if (task.joints != NULL)
+    if (robot_current_working == 555 || get_i_val(22) == 555)
     {
-        calculate_best_config(task.target,task.joints, &config);
+        angleToPulse(task.joints, pulse);
+        put_j_val(pulse, yrc_task[idx].p_pose_idx);
     }
+    else {
+        calculate_best_config(task.target,task.joints, &config);
+        //calculate_best_config1(task.target,task.joints, &config,pluse);
+        put_p_val(p, config, yrc_task[idx].p_pose_idx);  
+    }
+    
     // set move type is L
     put_b_val(MOVEL, yrc_task[idx].b_motionType_idx);
-
-    put_p_val(p, config, yrc_task[idx].p_pose_idx);
-
     put_i_val(update_speed(task.speed, MOVEL), yrc_task[idx].i_speed_idx);
-
     put_i_val(update_acc(task.acc), yrc_task[idx].i_acc_idx);
-
     put_i_val(update_blend(task.blend), yrc_task[idx].i_blend_idx);
 }
 
