@@ -1850,7 +1850,7 @@ void t1_main(int arg1, int arg2)
                         if (get_b_val(16)){
                             waitSec(1);//scan delay
                         }
-                        result = scp->TPPick(&bins[product_id-1], forcescan);//pick prepare
+                        result = scp->TPPick(&bins[product_id-1], 1);//pick prepare
                         put_b_val(0, 15);//reset current bin
                         while (1)//wait tp core
                         {

@@ -3824,6 +3824,22 @@ static void put_i_val(int var,unsigned short idx)
         waitSec(0.01);
     }
 }
+
+static void put_b_val(unsigned short var,unsigned char idx)
+{
+    MP_USR_VAR_INFO varInfo;
+    
+    memset(&varInfo, 0, sizeof(varInfo));
+    varInfo.var_type = MP_VAR_B;
+    varInfo.var_no = idx;
+    varInfo.val.b = var;
+    while(1)
+    {
+        if(mpPutUserVars(&varInfo) == 0) break;
+        waitSec(0.01);
+    }
+}
+
 int tp_pick(Bin *bin, short forcescan){
     Scape_Task_Internal t_pick_place[15];
     Scape_Task_Internal t_regrip[10];
@@ -3841,8 +3857,9 @@ int tp_pick(Bin *bin, short forcescan){
         tp_empty_hs(current_product);
     }
     pick_object(current_product,bin);
-    if (current_product->bin_is_empty){
+    if (current_product->bin_is_empty || get_b_val(11)){
         rc = CHANGE_BIN;
+        put_b_val(0, 11);
         put_i_val(rc, 65);
         current_product->grip_family_id = rc;
         ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
@@ -3867,8 +3884,9 @@ int tp_pick(Bin *bin, short forcescan){
             needscan = false;
         }
         pick_object(current_product,bin);
-        if (current_product->bin_is_empty){
+        if (current_product->bin_is_empty || get_b_val(11)){
             rc = CHANGE_BIN;
+            put_b_val(0, 11);
             put_i_val(rc, 65);
             current_product->grip_family_id = rc;
             ScapeTask finalTask = tp_get_ExitJob(1,current_product->grip_family_id,0,0);
